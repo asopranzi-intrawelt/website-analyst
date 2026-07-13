@@ -30,9 +30,15 @@ Setup e uso: vedi `README.md`. Guida funzionale: `guida/Guida_estrazione_testi_s
 
 - Rete: IP **192.168.20.24**, netmask **255.255.224.0** (/19), gateway **192.168.20.1**. Solo LAN.
 - Risorse: 16 GiB RAM, 6 vCPU (tipo host), disco sistema 32G (scsi0) + disco dati 96G (scsi1).
-- Suggerimento: montare il disco dati su `/srv` e tenere qui il progetto e gli output
-  (es. `/srv/estrattore-testi-sito/` e `/srv/output/`), così l'archivio crescente non
-  satura il disco di sistema. Verificare che il mount sia in `/etc/fstab`.
+- Fatto il 13/07/2026: disco dati (scsi1, `/dev/sdb1`, ext4, UUID `5cb1f056-8d7f-4d6d-af92-857bac1952c2`)
+  montato su `/srv` via `/etc/fstab`. Il repository resta sul disco di sistema in
+  `~/Scrivania/website-analyst` (il suo peso e' trascurabile, poche decine di KB piu' la
+  history git): a saturare il disco e' solo l'archivio di output che cresce senza limite,
+  quindi solo quello va su `/srv`. Il disco dati e' condiviso tra due usi: `/srv/output/`
+  per l'archivio di questo strumento, `/srv/crawl4ai-docling/` riservato al progetto futuro
+  di §6 (per cui il disco era stato dimensionato in origine, vedi
+  `_notes/handoff-vm207-sizing-crawl4ai-docling.md`). `fstrim.timer` e' gia' attivo sulla
+  VM, quindi non serve l'opzione di mount `discard`.
 - La VM è stata dimensionata (16GB, modelli Docling ~2GB) pensando anche a un eventuale
   stack Crawl4AI+Docling (vedi §6): per il solo strumento attuale è sovrabbondante, il che
   lascia margine se si aggiunge l'OCR.

@@ -1,5 +1,5 @@
 ---
-generated-from-commit: PENDING-FIRST-COMMIT
+generated-from-commit: babb092e15a27bf1eb672c25c84930de6a8308d5
 generated-from-branch: main
 generated-date: 2026-07-13
 covers-paths:
@@ -8,7 +8,7 @@ covers-paths:
   - backend_esempio/**
   - frontend_esempio/**
   - API_CONTRACT.md
-last-verified-commit: PENDING-FIRST-COMMIT
+last-verified-commit: babb092e15a27bf1eb672c25c84930de6a8308d5
 ---
 
 # Stack applicativo

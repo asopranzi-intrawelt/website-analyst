@@ -36,3 +36,27 @@ accesso remoto.
 Motivazione: nessuna necessita' di accesso esterno per il caso d'uso attuale (stima volume
 testi di siti aziendali); riduce superficie di attacco (SSRF verso rete interna, crawling
 arbitrario esposto pubblicamente).
+
+## ADR-005 — Repository sul disco di sistema, solo l'output su /srv
+
+Data: 13/07/2026.
+Decisione: il repository `website-analyst` resta in `~/Scrivania/website-analyst` sul
+disco di sistema (scsi0); solo l'archivio di output dei crawl usa il disco dati montato su
+`/srv` (`/srv/output/`). Non si sposta ne' si rinomina la cartella del progetto.
+Motivazione: il rischio di saturazione riguarda solo l'archivio di output, che cresce senza
+limite, non il codice, che pesa poche decine di KB. Spostare l'intero repository non
+avrebbe risolto nulla in piu' e avrebbe introdotto un rischio di confusione tra il nome
+locale della cartella e il nome del progetto/repository GitHub (`website-analyst`), che
+l'utente ha esplicitamente scelto di non cambiare.
+
+## ADR-006 — Disco dati /srv condiviso tra questo progetto e il futuro Crawl4AI/Docling
+
+Data: 13/07/2026.
+Decisione: il disco da 96G (scsi1, montato su `/srv`) e' condiviso tra due usi tramite
+sottocartelle: `/srv/output/` per l'archivio di questo strumento, `/srv/crawl4ai-docling/`
+riservato al progetto futuro "Sito -> Markdown -> RAG" descritto in
+`_notes/handoff-vm207-sizing-crawl4ai-docling.md`, per il quale il disco era stato
+originariamente dimensionato.
+Motivazione: 96G e' ampiamente sufficiente per entrambi (l'archivio di solo testo di questo
+strumento resta dell'ordine di pochi GB anche su siti grandi; i modelli Docling pesano
+~2GB); creare un disco separato per ciascun uso non avrebbe aggiunto valore.

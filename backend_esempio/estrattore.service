@@ -11,12 +11,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# utente non-root dedicato (crearlo con: sudo useradd -r -s /usr/sbin/nologin estrattore)
+# utente non-root dedicato (crearlo con: sudo useradd -r -s /usr/sbin/nologin estrattore);
+# il repository resta sotto la home di intrawelt (~/Scrivania/website-analyst), quindi
+# questo utente va aggiunto a un gruppo con permesso di lettura/esecuzione su quel percorso
+# prima di attivare il servizio, oppure il repository va reso leggibile (es. chmod o+rx sulla
+# home e sulla cartella del progetto).
 User=estrattore
-WorkingDirectory=/srv/estrattore-testi-sito
+WorkingDirectory=/home/intrawelt/Scrivania/website-analyst
 Environment=OUTPUT_BASE=/srv/output
 # usa il python del virtualenv
-ExecStart=/srv/estrattore-testi-sito/.venv/bin/uvicorn backend_esempio.app:app --host 192.168.20.24 --port 8000
+ExecStart=/home/intrawelt/Scrivania/website-analyst/.venv/bin/uvicorn backend_esempio.app:app --host 192.168.20.24 --port 8000
 Restart=on-failure
 RestartSec=5
 
