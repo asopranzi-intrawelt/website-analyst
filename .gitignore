@@ -1,0 +1,23 @@
+# --- Sistema di progetto portabile: livello privato e ignorato ---
+_notes/
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Segreti e materiale di credenziale
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Ambiente materializzato
+.venv/
+__pycache__/
+*.pyc
+
+# Output del crawler (spesso fuori repo su /srv, ma per sicurezza se lanciato in locale)
+output/
+*.zip
+
+# File di igiene noto, mai da tracciare se finisse per errore dentro il progetto
+passworg_gmail_intra

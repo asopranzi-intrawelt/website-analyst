@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estrattore testi sito</title>
+<style>
+  body{font-family:Segoe UI,system-ui,Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 16px;color:#1a1a1a}
+  h1{font-size:22px} label{display:block;margin:12px 0 4px;font-weight:600;font-size:14px}
+  input,select{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:14px;box-sizing:border-box}
+  .row{display:flex;gap:12px}.row>div{flex:1}
+  button{margin-top:16px;padding:10px 18px;border:0;border-radius:6px;background:#1f497d;color:#fff;font-size:15px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  #stato{margin-top:20px;padding:12px;border:1px solid #ddd;border-radius:6px;background:#fafafa;display:none}
+  pre{background:#111;color:#eee;padding:10px;border-radius:6px;max-height:320px;overflow:auto;font-size:12px;white-space:pre-wrap}
+  .chk{display:flex;align-items:center;gap:6px;margin-top:22px}.chk input{width:auto}
+</style>
+</head>
+<body>
+<h1>Estrattore testi da un sito</h1>
+<p>Inserisci l'URL del sito e avvia il download. Solo per uso interno / LAN.</p>
+
+<label>URL del sito</label>
+<input id="url" placeholder="https://www.sito.it/">
+
+<div class="row">
+  <div><label>Nome cartella output</label><input id="nome" value="output"></div>
+  <div><label>Max pagine</label><input id="max" type="number" value="300"></div>
+  <div><label>Delay (sec)</label><input id="delay" type="number" step="0.1" value="1.0"></div>
+</div>
+<div class="row">
+  <div class="chk"><input type="checkbox" id="pdf" checked><label style="margin:0">Scarica anche i PDF</label></div>
+  <div class="chk"><input type="checkbox" id="headful"><label style="margin:0">Headful (siti anti-bot; richiede xvfb)</label></div>
+</div>
+
+<button id="go" onclick="avvia()">Avvia download</button>
+
+<div id="stato">
+  <div><b>Stato:</b> <span id="lbl">—</span> &nbsp; <a id="dl" href="#" style="display:none">⬇ Scarica ZIP</a></div>
+  <pre id="log"></pre>
+</div>
+
+<script>
+let timer = null;
+async function avvia(){
+  const body = {
+    url: document.getElementById('url').value.trim(),
+    nome: document.getElementById('nome').value.trim() || 'output',
+    max_pagine: parseInt(document.getElementById('max').value) || 300,
+    delay: parseFloat(document.getElementById('delay').value) || 1.0,
+    headful: document.getElementById('headful').checked,
+    scarica_pdf: document.getElementById('pdf').checked
+  };
+  if(!body.url){ alert('Inserisci un URL'); return; }
+  document.getElementById('go').disabled = true;
+  const r = await fetch('/crawl', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  if(!r.ok){ alert('Errore: '+(await r.text())); document.getElementById('go').disabled=false; return; }
+  const {job_id} = await r.json();
+  document.getElementById('stato').style.display='block';
+  if(timer) clearInterval(timer);
+  timer = setInterval(()=>poll(job_id), 2000);
+  poll(job_id);
+}
+async function poll(id){
+  const r = await fetch('/jobs/'+id); if(!r.ok) return;
+  const j = await r.json();
+  document.getElementById('lbl').textContent = j.stato;
+  document.getElementById('log').textContent = j.log || '';
+  const dl = document.getElementById('dl');
+  if(j.stato==='completato'){ dl.style.display='inline'; dl.href='/jobs/'+id+'/zip'; }
+  if(j.stato==='completato' || j.stato==='errore'){ clearInterval(timer); document.getElementById('go').disabled=false; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="colors_and_type.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg-page); }
+  input[type="text"], input[type="number"] { font-family: var(--font-sans); }
+  input[type="text"]:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: var(--scenia-purple) !important;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--scenia-purple) 14%, transparent);
+  }
+  a { color: var(--fg-link); text-decoration: none; }
+  a:hover { color: var(--purple-700); text-decoration: underline; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes barPulse { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
+</style>
+</helmet>
+<div style="min-height: 100vh; background: var(--bg-page); display: flex; flex-direction: column; align-items: center; padding: 56px 24px 96px; font-family: var(--font-sans); color: var(--fg-primary);">
+
+  <div style="width: 100%; max-width: 760px; display: flex; align-items: center; gap: 12px; margin-bottom: 40px;">
+    <span style="font-family: var(--font-sans); font-weight: 500; font-size: 22px; letter-spacing: -0.01em; color: var(--fg-primary);">Intr<span class="t-gradient" style="font-style: normal;">a</span>welt</span>
+    <span style="width: 1px; height: 22px; background: var(--border-strong);"></span>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-secondary);">Strumenti interni</span>
+  </div>
+
+  <!-- ══════════ STEP 1 · FORM ══════════ -->
+  <sc-if value="{{ isForm }}" hint-placeholder-val="{{ true }}">
+  <div style="width: 100%; max-width: 760px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-1); padding: 44px 44px 40px;">
+    <h1 style="font-family: var(--font-serif); font-weight: 500; font-size: 36px; line-height: 1.15; letter-spacing: -0.01em; margin: 0 0 8px;">Website <em class="t-gradient">Analyst</em></h1>
+    <p style="font-size: 18px; font-weight: 500; line-height: 1.3; color: var(--fg-primary); margin: 0 0 10px;">Estrattore testi da un sito</p>
+    <p style="font-size: 16px; line-height: 1.5; color: var(--fg-secondary); margin: 0 0 32px; max-width: 56ch;">Inserisci l'URL del sito e avvia il download. Solo per uso interno / LAN.</p>
+
+    <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">URL del sito</label>
+    <input type="text" value="{{ urlVal }}" onInput="{{ onUrl }}" placeholder="https://www.sito.it/" style="width: 100%; height: 46px; padding: 0 14px; font-size: 16px; color: var(--fg-primary); background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 10px; transition: border-color 200ms ease, box-shadow 200ms ease;">
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 24px;">
+      <div>
+        <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Nome cartella output</label>
+        <input type="text" value="{{ folderVal }}" onInput="{{ onFolder }}" style="width: 100%; height: 44px; padding: 0 14px; font-size: 15px; color: var(--fg-primary); background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 10px; transition: border-color 200ms ease, box-shadow 200ms ease;">
+      </div>
+      <div>
+        <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Max pagine</label>
+        <input type="number" value="{{ maxVal }}" onInput="{{ onMax }}" style="width: 100%; height: 44px; padding: 0 14px; font-size: 15px; color: var(--fg-primary); background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 10px; transition: border-color 200ms ease, box-shadow 200ms ease;">
+      </div>
+      <div>
+        <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Delay (sec)</label>
+        <input type="text" value="{{ delayVal }}" onInput="{{ onDelay }}" style="width: 100%; height: 44px; padding: 0 14px; font-size: 15px; color: var(--fg-primary); background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 10px; transition: border-color 200ms ease, box-shadow 200ms ease;">
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 40px; margin-top: 28px;">
+      <label style="display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 500; cursor: pointer; user-select: none;">
+        <input type="checkbox" checked="{{ pdfVal }}" onChange="{{ onPdf }}" style="width: 17px; height: 17px; accent-color: var(--scenia-purple); cursor: pointer;">
+        Scarica anche i PDF
+      </label>
+      <label style="display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 500; cursor: pointer; user-select: none;">
+        <input type="checkbox" checked="{{ headfulVal }}" onChange="{{ onHeadful }}" style="width: 17px; height: 17px; accent-color: var(--scenia-purple); cursor: pointer;">
+        Headful (siti anti-bot; richiede xvfb)
+      </label>
+    </div>
+
+    <button onClick="{{ onSubmit }}" style="margin-top: 32px; height: 48px; padding: 0 28px; font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--fg-on-accent); background: var(--scenia-purple); border: none; border-radius: 10px; cursor: pointer; transition: background 200ms ease;" style-hover="background: var(--purple-700);">Avvia download</button>
+  </div>
+  </sc-if>
+
+  <!-- ══════════ STEP 2 · LOADING ══════════ -->
+  <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+  <div style="width: 100%; max-width: 760px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-1); padding: 48px 44px; animation: fadeUp 300ms ease both;">
+    <div style="display: flex; align-items: center; gap: 18px; margin-bottom: 28px;">
+      <span style="width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border-subtle); border-top-color: var(--scenia-purple); display: inline-block; animation: spin 800ms linear infinite; flex: none;"></span>
+      <div>
+        <h2 style="font-family: var(--font-serif); font-weight: 500; font-size: 26px; margin: 0 0 4px;">Download in corso</h2>
+        <p style="font-size: 15px; color: var(--fg-secondary); margin: 0;">Estrazione dei testi da <span style="color: var(--fg-primary); font-weight: 500;">{{ hostLabel }}</span> - non chiudere questa finestra.</p>
+      </div>
+    </div>
+
+    <div style="height: 8px; width: 100%; background: var(--bg-muted); border-radius: 999px; overflow: hidden;">
+      <div style="height: 100%; width: {{ progressWidth }}; background: var(--scenia-gradient); border-radius: 999px; transition: width 300ms ease; animation: barPulse 1.4s ease-in-out infinite;"></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 13px; color: var(--fg-secondary);">
+      <span>Pagina {{ curPage }} / {{ totPages }}</span>
+      <span>{{ progressWidth }}</span>
+    </div>
+
+    <div style="margin-top: 28px; background: var(--night); border-radius: 12px; padding: 18px 20px; font-family: var(--font-mono); font-size: 13px; line-height: 1.7; color: color-mix(in oklab, white 82%, transparent); height: 168px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;">
+      <sc-for list="{{ logs }}" as="line" hint-placeholder-count="4">
+        <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span style="color: var(--scenia-teal);">›</span> {{ line }}</div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ══════════ STEP 3 · SUMMARY ══════════ -->
+  <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+  <div style="width: 100%; max-width: 760px; animation: fadeUp 300ms ease both;">
+    <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-1); padding: 44px 44px 40px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <span style="width: 26px; height: 26px; border-radius: 50%; background: var(--ok-bg); color: var(--ok); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; flex: none;">✓</span>
+        <h2 style="font-family: var(--font-serif); font-weight: 500; font-size: 28px; margin: 0;">Estrazione <em class="t-gradient">completata</em></h2>
+      </div>
+      <p style="font-size: 15px; color: var(--fg-secondary); margin: 0 0 28px;">Cartella <span style="font-family: var(--font-mono); background: var(--bg-muted); padding: 2px 7px; border-radius: 6px; font-size: 13px;">{{ folderName }}/</span> generata dal backend.</p>
+
+      <!-- stats -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; margin-bottom: 32px;">
+        <div style="background: var(--bg-card); padding: 18px 20px;">
+          <div style="font-family: var(--font-serif); font-weight: 500; font-size: 30px; line-height: 1;">{{ statPages }}</div>
+          <div style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); margin-top: 6px;">Pagine</div>
+        </div>
+        <div style="background: var(--bg-card); padding: 18px 20px;">
+          <div style="font-family: var(--font-serif); font-weight: 500; font-size: 30px; line-height: 1;">{{ statPdfs }}</div>
+          <div style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); margin-top: 6px;">PDF</div>
+        </div>
+        <div style="background: var(--bg-card); padding: 18px 20px;">
+          <div style="font-family: var(--font-serif); font-weight: 500; font-size: 30px; line-height: 1;">{{ statFiles }}</div>
+          <div style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); margin-top: 6px;">File totali</div>
+        </div>
+        <div style="background: var(--bg-card); padding: 18px 20px;">
+          <div style="font-family: var(--font-serif); font-weight: 500; font-size: 30px; line-height: 1;">{{ statSize }}</div>
+          <div style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); margin-top: 6px;">Dimensione</div>
+        </div>
+      </div>
+
+      <!-- tree -->
+      <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); margin-bottom: 12px;">Struttura della cartella</div>
+      <div style="background: var(--paper); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px 22px; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.85; max-height: 340px; overflow: auto;">
+        <sc-for list="{{ tree }}" as="node" hint-placeholder-count="6">
+          <div style="display: flex; justify-content: space-between; gap: 16px; white-space: pre;"><span style="color: {{ node.color }};">{{ node.label }}</span><span style="color: var(--fg-muted); font-size: 12px; flex: none;">{{ node.meta }}</span></div>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 16px; margin-top: 32px;">
+        <button onClick="{{ onDownloadZip }}" style="height: 48px; padding: 0 26px; display: inline-flex; align-items: center; gap: 10px; font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--fg-on-accent); background: var(--scenia-purple); border: none; border-radius: 10px; cursor: pointer; transition: background 200ms ease;" style-hover="background: var(--purple-700);">
+          <span style="font-size: 17px; line-height: 1;">↓</span> Scarica {{ zipName }}
+        </button>
+        <button onClick="{{ onReset }}" style="height: 48px; padding: 0 22px; font-family: var(--font-sans); font-size: 16px; font-weight: 500; color: var(--fg-primary); background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 10px; cursor: pointer; transition: background 200ms ease;" style-hover="background: var(--bg-muted);">Nuovo download</button>
+        <span style="font-size: 13px; color: var(--fg-muted);">{{ zipHint }}</span>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    step: 'form',
+    url: '',
+    folder: 'output',
+    max: 300,
+    delay: '1,0',
+    pdf: true,
+    headful: false,
+    // loading
+    progress: 0,
+    curPage: 0,
+    totPages: 0,
+    logs: [],
+    // done
+    result: null,
+  };
+
+  // ---- helpers ----
+  hostFromUrl(u) {
+    try { return new URL(u.match(/^https?:\/\//) ? u : 'https://' + u).hostname.replace(/^www\./, ''); }
+    catch (e) { return (u || 'sito.it').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] || 'sito.it'; }
+  }
+
+  slugFor(i) {
+    const s = ['home','chi-siamo','servizi','traduzione','interpretariato','settori','case-study',
+      'tecnologia','qualita-iso','lavora-con-noi','blog','news','contatti','privacy','cookie-policy',
+      'faq','preventivo','clienti','partner','certificazioni','glossario','sedi','team','risorse'];
+    return s[i % s.length];
+  }
+
+  buildResult() {
+    const host = this.hostFromUrl(this.state.url);
+    const cap = Math.max(1, Math.min(parseInt(this.state.max, 10) || 300, 300));
+    const nPages = Math.min(cap, 6 + Math.floor(Math.random() * 12)); // realistic sample
+    const nPdfs = this.state.pdf ? (2 + Math.floor(Math.random() * 4)) : 0;
+    const folder = (this.state.folder || 'output').trim().replace(/\/+$/, '') || 'output';
+
+    const files = []; // {path, content}
+    const pages = [];
+    for (let i = 0; i < nPages; i++) {
+      const slug = this.slugFor(i);
+      const name = String(i + 1).padStart(4, '0') + '-' + slug + '.txt';
+      const words = 180 + Math.floor(Math.random() * 900);
+      const content = `URL: https://${host}/${slug === 'home' ? '' : slug}\nTitolo: ${slug.replace(/-/g, ' ')}\nParole: ${words}\nEstratto: ${new Date().toISOString()}\n\n${('Contenuto testuale estratto dalla pagina. ').repeat(6)}`;
+      files.push({ path: `testi/${name}`, content });
+      pages.push({ name, bytes: content.length });
+    }
+    const pdfs = [];
+    const pdfNames = ['brochure-aziendale','listino-servizi','scheda-tecnica','company-profile','condizioni-generali'];
+    for (let i = 0; i < nPdfs; i++) {
+      const name = pdfNames[i % pdfNames.length] + '.pdf';
+      const content = `%PDF-1.4\n% placeholder scaricato da https://${host}\n${name}\n`;
+      files.push({ path: `pdf/${name}`, content });
+      pdfs.push({ name, bytes: 40000 + Math.floor(Math.random() * 800000) });
+    }
+
+    const sitemap = `# sitemap - ${host}\n` + pages.map((p, i) => `https://${host}/${this.slugFor(i)}`).join('\n');
+    files.push({ path: 'sitemap.txt', content: sitemap });
+    const report = {
+      sito: `https://${host}`, cartella: folder, generato: new Date().toISOString(),
+      pagine: nPages, pdf: nPdfs, max_pagine: cap, delay_sec: this.state.delay,
+      pdf_abilitato: this.state.pdf, headful: this.state.headful,
+    };
+    files.push({ path: '_report.json', content: JSON.stringify(report, null, 2) });
+
+    const totalBytes = files.reduce((a, f) => a + f.content.length, 0)
+      + pdfs.reduce((a, p) => a + p.bytes, 0);
+
+    // build display tree
+    const purple = 'var(--scenia-purple)';
+    const ink = 'var(--fg-primary)';
+    const teal = 'var(--teal-700)';
+    const tree = [];
+    tree.push({ label: `${folder}/`, meta: '', color: purple });
+    tree.push({ label: `├─ _report.json`, meta: this.fmtBytes(report ? JSON.stringify(report, null, 2).length : 0), color: ink });
+    tree.push({ label: `├─ sitemap.txt`, meta: this.fmtBytes(sitemap.length), color: ink });
+    tree.push({ label: `├─ testi/`, meta: `${nPages} file`, color: purple });
+    const showPages = pages.slice(0, 5);
+    showPages.forEach((p, i) => {
+      const last = i === showPages.length - 1 && pages.length <= 5 && nPdfs === 0;
+      tree.push({ label: `│  ${i === showPages.length - 1 && pages.length <= 5 ? '└─' : '├─'} ${p.name}`, meta: this.fmtBytes(p.bytes), color: ink });
+    });
+    if (pages.length > 5) tree.push({ label: `│  └─ … +${pages.length - 5} file .txt`, meta: '', color: 'var(--fg-muted)' });
+    if (nPdfs > 0) {
+      tree.push({ label: `└─ pdf/`, meta: `${nPdfs} file`, color: purple });
+      pdfs.forEach((p, i) => {
+        tree.push({ label: `   ${i === pdfs.length - 1 ? '└─' : '├─'} ${p.name}`, meta: this.fmtBytes(p.bytes), color: ink });
+      });
+    }
+
+    return {
+      host, folder, files, nPages, nPdfs,
+      totalFiles: files.length, totalBytes, tree,
+    };
+  }
+
+  fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  // ---- flow ----
+  startDownload = () => {
+    if (this._timer) clearInterval(this._timer);
+    const host = this.hostFromUrl(this.state.url);
+    const cap = Math.max(1, Math.min(parseInt(this.state.max, 10) || 300, 300));
+    const totPages = Math.min(cap, 6 + Math.floor(Math.random() * 12));
+    this.setState({ step: 'loading', progress: 0, curPage: 0, totPages, logs: [`avvio crawler su https://${host}`, 'lettura sitemap.xml …'] });
+
+    let page = 0;
+    this._timer = setInterval(() => {
+      page++;
+      const pct = Math.min(100, Math.round((page / totPages) * 100));
+      const slug = this.slugFor(page - 1);
+      const newLogs = this.state.logs.concat([`[${page}/${totPages}] estraggo /${slug === 'home' ? '' : slug} (${this.state.delay}s)`]).slice(-6);
+      this.setState({ curPage: page, progress: pct, logs: newLogs });
+      if (page >= totPages) {
+        clearInterval(this._timer);
+        setTimeout(() => {
+          const extra = this.state.logs.concat(['scrittura file su disco …', 'creazione archivio completata ✓']).slice(-6);
+          this.setState({ logs: extra });
+          setTimeout(() => this.setState({ step: 'done', result: this.buildResult() }), 650);
+        }, 300);
+      }
+    }, 420);
+  };
+
+  onSubmit = () => {
+    if (!this.state.url.trim()) {
+      this.setState({ url: 'https://www.intrawelt.com' }, this.startDownload);
+      return;
+    }
+    this.startDownload();
+  };
+
+  onReset = () => this.setState({ step: 'form', result: null, progress: 0, curPage: 0, logs: [] });
+
+  onDownloadZip = async () => {
+    const r = this.state.result;
+    if (!r || typeof JSZip === 'undefined') return;
+    this.setState({ zipBusy: true });
+    const zip = new JSZip();
+    const root = zip.folder(r.folder);
+    r.files.forEach(f => root.file(f.path, f.content));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = r.folder + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    this.setState({ zipBusy: false });
+  };
+
+  componentWillUnmount() { if (this._timer) clearInterval(this._timer); }
+
+  renderVals() {
+    const s = this.state;
+    const r = s.result;
+    return {
+      isForm: s.step === 'form',
+      isLoading: s.step === 'loading',
+      isDone: s.step === 'done',
+
+      urlVal: s.url, folderVal: s.folder, maxVal: s.max, delayVal: s.delay,
+      pdfVal: s.pdf, headfulVal: s.headful,
+      onUrl: e => this.setState({ url: e.target.value }),
+      onFolder: e => this.setState({ folder: e.target.value }),
+      onMax: e => this.setState({ max: e.target.value }),
+      onDelay: e => this.setState({ delay: e.target.value }),
+      onPdf: e => this.setState({ pdf: e.target.checked }),
+      onHeadful: e => this.setState({ headful: e.target.checked }),
+      onSubmit: this.onSubmit,
+
+      hostLabel: this.hostFromUrl(s.url) || 'il sito',
+      progressWidth: s.progress + '%',
+      curPage: s.curPage, totPages: s.totPages,
+      logs: s.logs,
+
+      folderName: r ? r.folder : 'output',
+      statPages: r ? r.nPages : 0,
+      statPdfs: r ? r.nPdfs : 0,
+      statFiles: r ? r.totalFiles : 0,
+      statSize: r ? this.fmtBytes(r.totalBytes) : '0 B',
+      tree: r ? r.tree : [],
+      zipName: r ? r.folder + '.zip' : 'output.zip',
+      zipHint: s.zipBusy ? 'creazione archivio …' : 'archivio .zip pronto',
+      onDownloadZip: this.onDownloadZip,
+      onReset: this.onReset,
+    };
+  }
+}
+</script>
+</body>
+</html>

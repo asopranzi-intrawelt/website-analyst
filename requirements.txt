@@ -1,0 +1,11 @@
+# Dipendenze dello strumento di estrazione testi da siti web.
+# Installazione: pip install -r requirements.txt  (poi: playwright install --with-deps chromium)
+
+playwright>=1.44
+beautifulsoup4>=4.12
+lxml>=5.2
+pdfminer.six>=20240706
+
+# --- Backend di esempio (facoltativo, solo se usi backend_esempio/) ---
+fastapi>=0.111
+uvicorn[standard]>=0.30

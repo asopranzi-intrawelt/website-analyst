@@ -1,0 +1,308 @@
+/* ════════════════════════════════════════════════════════════════════
+   Intrawelt / Scenia — Design System Foundations
+   Colors + Type tokens. Import this file first; everything else
+   composes on top.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ─── Altro Grotesk (workhorse sans) ─── */
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Extralight.otf") format("opentype"); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Extralight-Italic.otf") format("opentype"); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Light-Italic.otf") format("opentype"); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Book.otf") format("opentype"); font-weight: 350; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Book-Italic.otf") format("opentype"); font-weight: 350; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Italic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Medium-Italic.otf") format("opentype"); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Bold-Italic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Extrabold.otf") format("opentype"); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Extrabold-Italic.otf") format("opentype"); font-weight: 800; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Fat.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Grotesk"; src: url("fonts/Altro-Grotesk-Fat-Italic.otf") format("opentype"); font-weight: 900; font-style: italic; font-display: swap; }
+
+/* ─── Altro Serif (editorial / display) ─── */
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Extralight.otf") format("opentype"); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Book.otf") format("opentype"); font-weight: 350; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Italic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Bold-Italic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Altro Serif"; src: url("fonts/Altro-Serif-Fat.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
+
+/* ─── Altro Flare (display accent — use sparingly) ─── */
+@font-face { font-family: "Altro Flare"; src: url("fonts/Altro-Flare-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Flare"; src: url("fonts/Altro-Flare-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Flare"; src: url("fonts/Altro-Flare-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Flare"; src: url("fonts/Altro-Flare-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Altro Flare"; src: url("fonts/Altro-Flare-Fat.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
+
+:root {
+  /* ════════════════════════════════════════════════
+     COLORS — base palette
+     Derived from Scenia logo gradient + brand spec.
+     ════════════════════════════════════════════════ */
+
+  /* Primary — the four gradient hinges */
+  --scenia-purple: #3C2487;
+  --scenia-blue:   #019BEE;
+  --scenia-teal:   #09A596;
+  --scenia-gold:   #E3B23C;
+
+  /* Tints / shades for surfaces and hover states */
+  --purple-50:  #F2EEFB;
+  --purple-100: #DCD2F1;
+  --purple-200: #B5A4DF;
+  --purple-300: #8A6FCB;
+  --purple-500: var(--scenia-purple);
+  --purple-700: #2B1A6E;
+  --purple-900: #1A0F4D;
+
+  --blue-50:  #E5F5FE;
+  --blue-100: #BFE6FC;
+  --blue-300: #5DC0F4;
+  --blue-500: var(--scenia-blue);
+  --blue-700: #0277B8;
+
+  --teal-50:  #E2F6F3;
+  --teal-100: #B6E7E0;
+  --teal-300: #4DC2B4;
+  --teal-500: var(--scenia-teal);
+  --teal-700: #06776B;
+
+  --gold-50:  #FBF3DD;
+  --gold-100: #F4DFA0;
+  --gold-300: #ECC868;
+  --gold-500: var(--scenia-gold);
+  --gold-700: #A37A1F;
+
+  /* Signature 4-stop gradient — the "n" hinge sits at ~60%. */
+  --scenia-gradient: linear-gradient(
+    90deg,
+    var(--scenia-purple) 0%,
+    var(--scenia-blue) 35%,
+    var(--scenia-teal) 60%,
+    var(--scenia-gold) 100%
+  );
+  --scenia-gradient-soft: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--scenia-purple) 18%, white) 0%,
+    color-mix(in oklab, var(--scenia-blue)   18%, white) 35%,
+    color-mix(in oklab, var(--scenia-teal)   18%, white) 60%,
+    color-mix(in oklab, var(--scenia-gold)   18%, white) 100%
+  );
+  --scenia-gradient-vert: linear-gradient(
+    180deg,
+    var(--scenia-purple) 0%,
+    var(--scenia-blue) 35%,
+    var(--scenia-teal) 60%,
+    var(--scenia-gold) 100%
+  );
+
+  /* Neutrals — document-first, generous contrast */
+  --ink-900: #0D1117;   /* body text, near-black */
+  --ink-700: #2B323C;
+  --ink-500: #525A66;   /* secondary text */
+  --ink-400: #7A828F;
+  --ink-300: #C7CBD2;   /* rules, dividers */
+  --ink-200: #E4E7EB;
+  --ink-100: #F1F3F5;
+  --paper:   #FBFAF6;   /* warm off-white, book-like */
+  --card:    #FFFFFF;
+  --night:   #0A0E1A;   /* dark surface, cover slides */
+
+  /* Semantic */
+  --ok:    #1F7A4D;
+  --ok-bg: #E5F4EC;
+  --warn:    #B5651D;
+  --warn-bg: #FBEEDC;
+  --err:    #B43230;
+  --err-bg: #FBE6E5;
+  --info:    var(--scenia-blue);
+  --info-bg: var(--blue-50);
+
+  /* ════════════════════════════════════════════════
+     SEMANTIC COLOR ROLES
+     Use these in components, not the raw palette.
+     ════════════════════════════════════════════════ */
+  --fg-primary:   var(--ink-900);
+  --fg-secondary: var(--ink-500);
+  --fg-muted:     var(--ink-400);
+  --fg-on-accent: #FFFFFF;
+  --fg-link:      var(--scenia-purple);
+
+  --bg-page:      var(--paper);
+  --bg-card:      var(--card);
+  --bg-muted:     var(--ink-100);
+  --bg-night:     var(--night);
+  --bg-accent:    var(--scenia-purple);
+
+  --border-subtle: var(--ink-200);
+  --border-strong: var(--ink-300);
+  --border-accent: var(--scenia-purple);
+
+  /* ════════════════════════════════════════════════
+     TYPE — families + scale
+     ════════════════════════════════════════════════ */
+  --font-sans:  "Altro Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Altro Serif", Georgia, "Times New Roman", serif;
+  --font-flare: "Altro Flare", "Altro Grotesk", sans-serif;
+  --font-mono:  ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Modular scale — 1.25 ratio, document-friendly */
+  --t-12: 12px;
+  --t-13: 13px;
+  --t-14: 14px;
+  --t-16: 16px;   /* body */
+  --t-18: 18px;
+  --t-20: 20px;
+  --t-24: 24px;
+  --t-30: 30px;
+  --t-36: 36px;
+  --t-48: 48px;
+  --t-60: 60px;
+  --t-76: 76px;
+  --t-96: 96px;
+
+  /* Line heights */
+  --lh-tight:   1.05;
+  --lh-snug:    1.2;
+  --lh-normal:  1.5;
+  --lh-loose:   1.7;
+
+  /* Letter spacing */
+  --ls-tight:  -0.02em;
+  --ls-snug:   -0.01em;
+  --ls-normal: 0;
+  --ls-wide:   0.04em;
+  --ls-eyebrow: 0.12em;
+
+  /* ════════════════════════════════════════════════
+     SPACING + RADII + ELEVATION
+     ════════════════════════════════════════════════ */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --s-9: 96px;
+  --s-10: 128px;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-pill: 999px;
+
+  --shadow-1: 0 1px 2px rgba(13,17,23,0.06), 0 1px 1px rgba(13,17,23,0.04);
+  --shadow-2: 0 4px 12px rgba(13,17,23,0.08), 0 2px 4px rgba(13,17,23,0.04);
+  --shadow-3: 0 12px 32px rgba(13,17,23,0.12), 0 4px 8px rgba(13,17,23,0.06);
+  --shadow-glow: 0 0 0 1px color-mix(in oklab, var(--scenia-purple) 40%, transparent),
+                 0 8px 24px color-mix(in oklab, var(--scenia-purple) 20%, transparent);
+}
+
+/* ════════════════════════════════════════════════
+   SEMANTIC TYPE STYLES
+   Apply these classes; don't restyle from scratch.
+   ════════════════════════════════════════════════ */
+
+.t-display {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--t-76);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  color: var(--fg-primary);
+}
+.t-h1 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--t-48);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--ls-snug);
+  color: var(--fg-primary);
+}
+.t-h2 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--t-36);
+  line-height: 1.15;
+  letter-spacing: var(--ls-snug);
+  color: var(--fg-primary);
+}
+.t-h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--t-24);
+  line-height: 1.25;
+  color: var(--fg-primary);
+}
+.t-h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--t-20);
+  line-height: 1.3;
+  color: var(--fg-primary);
+}
+.t-lede {
+  font-family: var(--font-sans);
+  font-weight: 300;
+  font-size: var(--t-20);
+  line-height: var(--lh-normal);
+  color: var(--fg-secondary);
+}
+.t-body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: var(--t-16);
+  line-height: var(--lh-normal);
+  color: var(--fg-primary);
+}
+.t-body-sm {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: var(--t-14);
+  line-height: var(--lh-normal);
+  color: var(--fg-primary);
+}
+.t-caption {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: var(--t-13);
+  line-height: 1.4;
+  color: var(--fg-secondary);
+}
+.t-eyebrow {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--t-13);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--fg-secondary);
+}
+.t-mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--bg-muted);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+}
+.t-flare {
+  font-family: var(--font-flare);
+  font-weight: 400;
+}
+
+/* Brand gradient applied to text — a cornerstone treatment */
+.t-gradient {
+  background: var(--scenia-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-style: italic;
+}

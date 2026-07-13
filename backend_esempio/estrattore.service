@@ -1,0 +1,24 @@
+# Esempio di servizio systemd per tenere il backend sempre attivo.
+# Copiare in /etc/systemd/system/estrattore.service, adattare i percorsi, poi:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now estrattore
+#   sudo systemctl status estrattore
+
+[Unit]
+Description=Estrattore testi sito - backend FastAPI (LAN)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# utente non-root dedicato (crearlo con: sudo useradd -r -s /usr/sbin/nologin estrattore)
+User=estrattore
+WorkingDirectory=/srv/estrattore-testi-sito
+Environment=OUTPUT_BASE=/srv/output
+# usa il python del virtualenv
+ExecStart=/srv/estrattore-testi-sito/.venv/bin/uvicorn backend_esempio.app:app --host 192.168.20.24 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
