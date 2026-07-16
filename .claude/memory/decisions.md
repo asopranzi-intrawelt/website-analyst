@@ -60,3 +60,40 @@ originariamente dimensionato.
 Motivazione: 96G e' ampiamente sufficiente per entrambi (l'archivio di solo testo di questo
 strumento resta dell'ordine di pochi GB anche su siti grandi; i modelli Docling pesano
 ~2GB); creare un disco separato per ciascun uso non avrebbe aggiunto valore.
+
+## ADR-007 — Decisioni di dettaglio per il backend reale di M1
+
+Data: 15/07/2026.
+Decisione: collisione sul nome di `folder` risolta con suffisso incrementale (`_2`, `_3`,
+...) invece di rifiutare la richiesta, per restare fedeli alla forma del contratto (il
+nome cartella resta quello scelto dall'utente, solo reso univoco); pulizia TTL delle
+cartelle di output inclusa gia' in M1 (non rimandata a M3), ma limitata alle sole cartelle
+gia' archiviate con successo sulla share (vedi ADR-008), per non cancellare mai l'unica
+copia di un risultato; lo scheletro `frontend_esempio/index.html` aggiornato solo nelle
+chiamate API (endpoint, nomi campo, `EventSource` al posto del polling) senza toccare
+grafica/stile, che resta compito di M2.
+Motivazione: sono i tre punti dove il contratto lasciava un grado di liberta' non coperto
+esplicitamente da `API_CONTRACT.md`/roadmap; le scelte sono state fatte con l'utente prima
+di scrivere il codice.
+
+## ADR-008 — Archivio dei crawl completati su share di rete, non solo su /srv
+
+Data: 15/07/2026.
+Decisione: il backend continua a far scrivere il crawl a `scarica_sito_webcopy.py` in
+locale su `/srv/output` (staging, invariato da ADR-005/006); a fine job, se il crawl e'
+riuscito, una copia bulk (`shutil.copytree`) sposta l'intera cartella su una share SMB
+esterna montata in CIFS su `/mnt/downloaded-websites` (UNC
+`\\192.168.20.177\utili(new)\downloaded-websites`, credenziali in
+`/etc/samba/creds`, utente dedicato `webanalyst`). Un marcatore `.archiviato` nella
+cartella locale segnala che la copia e' andata a buon fine; la pulizia TTL (ADR-007) non
+tocca mai una cartella priva del marcatore, indipendentemente dall'eta'. `/result` e
+`/download` leggono sempre e solo da `/srv/output`, mai dalla share.
+Motivazione, scartata l'alternativa di far scrivere il crawler direttamente sulla share:
+Playwright produce centinaia di scritture piccole e sincrone per pagina (mirror, HTML
+leggibile, testo estratto), e legarle alla latenza/disponibilita' di un host Windows
+esterno per tutta la durata del crawl avrebbe reso l'intero job fragile a un intoppo di
+rete; la copia finale e' invece un singolo trasferimento bulk, molto piu' tollerante.
+Follow-up aperto: il mount usa `uid=intrawelt,gid=intrawelt` perche' e' l'utente con cui
+gira il backend in questa fase di sviluppo; quando M3 creera' l'utente di servizio dedicato
+`estrattore` (gia' previsto in `backend_esempio/estrattore.service`), la riga in
+`/etc/fstab` andra' riallineata a quello (vedi `deployment.md`).

@@ -19,8 +19,19 @@ I tre stati del frontend funzionano end-to-end contro un backend reale, non simu
 3. Riepilogo con statistiche, albero file e download zip funzionante dal browser.
 
 L'albero mostrato in UI deve combaciare esattamente con la struttura reale prodotta su
-disco (vedi `API_CONTRACT.md` §3: `_report.json`, `sitemap.txt`, `testi/`, `pdf/`). Lo
-stato di errore (crawl fallito) deve mostrare un messaggio e un'azione "Riprova".
+disco da `scarica_sito_webcopy.py`: `www.<dominio>/`, `testi/`, `html_leggibile/`,
+`TESTI_COMPLETI.txt`, `conteggio.csv`, opzionale `_raw_html/` (l'esempio in
+`API_CONTRACT.md` §3 era illustrativo e non corrispondeva ai nomi reali; corretto in M1,
+vedi nota nello stesso file e `STACK.md`). Lo stato di errore (crawl fallito) deve mostrare
+un messaggio e un'azione "Riprova".
+
+## Verifica di M1 (backend reale)
+
+Eseguita il 15/07/2026 senza Playwright installato: `backend_esempio/app.py` verificato con
+`fastapi.testclient.TestClient` e un finto crawler che riproduce solo la forma di output
+rilevante (righe di progresso `[n/max]` su stdout, struttura reale su disco), coprendo tutti
+i casi della tabella sotto piu' la copia di archiviazione sulla share reale montata in CIFS.
+Verifica di un crawl vero (Playwright/Chromium) resta manuale, vedi `roadmap.md`.
 
 ## Casi limite da verificare quando il backend sara' implementato
 

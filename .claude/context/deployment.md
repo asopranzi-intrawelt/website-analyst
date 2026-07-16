@@ -5,7 +5,7 @@ generated-date: 2026-07-13
 covers-paths:
   - requirements.txt
   - backend_esempio/estrattore.service
-last-verified-commit: babb092e15a27bf1eb672c25c84930de6a8308d5
+last-verified-commit: b31cdad
 ---
 
 # Deployment
@@ -30,12 +30,24 @@ crawl; `/srv/crawl4ai-docling/` resta riservato al progetto futuro descritto in
 `_notes/handoff-vm207-sizing-crawl4ai-docling.md`, che aveva dimensionato originariamente
 questo stesso disco.
 
+Fatto il 15/07/2026 (M1): share SMB esterna montata in CIFS su `/mnt/downloaded-websites`
+(UNC `\\192.168.20.177\utili(new)\downloaded-websites`, utente dedicato `webanalyst`,
+credenziali in `/etc/samba/creds`, proprietario root, `chmod 600`; riga in `/etc/fstab` con
+`uid=intrawelt,gid=intrawelt,_netdev`). E' la destinazione finale (ADR-008) dove il backend
+copia ogni cartella di crawl completata; `/srv/output` resta lo staging locale dove il
+crawler scrive davvero. Follow-up aperto: quando M3 crea l'utente di servizio dedicato
+`estrattore`, la riga fstab va riallineata (`uid`/`gid` da `intrawelt` a `estrattore`) e la
+share rimontata.
+
 ## Avvio
 
 ```bash
 python scarica_sito_webcopy.py https://www.sito.it/ --out /srv/output/sito --max 2000
-# backend di esempio, quando implementato secondo API_CONTRACT.md (dalla cartella del repo):
+# backend reale (M1), dalla cartella del repo:
 cd ~/Scrivania/website-analyst && uvicorn backend_esempio.app:app --host 192.168.20.24 --port 8000
+# variabili d'ambiente lette da backend_esempio/app.py (default gia' corretti in produzione):
+#   OUTPUT_BASE=/srv/output (staging locale del crawl)
+#   ARCHIVE_BASE=/mnt/downloaded-websites (share di rete, destinazione finale)
 ```
 
 ## Produzione
