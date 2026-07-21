@@ -6,31 +6,38 @@
 
 ```
 Branch attivo:         main
-Commit di riferimento: babb092e15a27bf1eb672c25c84930de6a8308d5
-Data snapshot:         2026-07-13
+Commit di riferimento: be26553 (M1; M2 di questa sessione non ancora committato)
+Data snapshot:         2026-07-21
 ```
 
-Primo commit eseguito (`babb092`, "Allineamento al sistema di contesto portabile + handoff
-design/sizing"). Remote configurato:
-`git@github-corp:asopranzi-intrawelt/website-analyst.git` (identita' locale asopranzi/lavoro).
+Tre commit sul repository: `babb092`, `b31cdad`, `be26553` ("M1: backend FastAPI reale,
+archiviazione su share di rete CIFS" — riattribuito da asopranzi a tommyvezeni con
+`--amend --reset-author`, vedi `progress.md` 2026-07-21). Due remote configurati: `origin`
+(`git@github-corp:asopranzi-intrawelt/website-analyst.git`) e `origin-tommy`
+(`git@github-corp-tommy:tommyvezeni/website-analyst.git`, tracciato da `main`); entrambi
+ora allineati sullo stesso commit `be26553`. Identita' locale di default di questa cartella:
+`tommyvezeni <tvezeni@intrawelt.com>` (cambiata da asopranzi in questa sessione). Lavoro di
+M2 (frontend fedele + Playwright/Chromium installati) fatto in questa sessione ma non
+ancora committato: vedi `progress.md` 2026-07-21.
 
 ## Stato di verifica delle schede
 
 | Scheda | last-verified | Stato |
 |---|---|---|
-| STACK.md | babb092 | ancorata al primo commit |
+| STACK.md | b31cdad | aggiornata (estrattore.service); da rivedere per M2 |
 | design-and-security.md | babb092 | ancorata al primo commit |
-| deployment.md | babb092 | ancorata al primo commit |
-| dev-testing.md | babb092 | ancorata al primo commit |
-| current-work.md | babb092 | ancorata al primo commit |
+| deployment.md | b31cdad | contenuto aggiornato con mount CIFS (M1) + Playwright (M2), frontmatter da bumpare al prossimo commit |
+| dev-testing.md | babb092 | contenuto aggiornato con verifica M1, frontmatter da bumpare al prossimo commit |
+| current-work.md | babb092 | contenuto aggiornato a stato M2 completato, frontmatter da bumpare al prossimo commit |
 | roadmap.md | babb092 | ancorata al primo commit |
 
 ## Punto di ripresa
 
-Posizionamento completato: disco dati montato su `/srv` (`/srv/output/` per l'archivio di
-questo progetto, `/srv/crawl4ai-docling/` riservato al futuro, vedi ADR-005/006 in
-`decisions.md`); il repository resta in `~/Scrivania/website-analyst`, non spostato. Le
-modifiche a `CLAUDE.md`, `deployment.md` e `backend_esempio/estrattore.service` fatte in
-questa sessione non sono ancora committate. Prossimo passo: far committare all'utente
-queste modifiche, poi implementare il backend FastAPI secondo `API_CONTRACT.md` (M1 di
-`roadmap.md`), lanciando `scarica_sito_webcopy.py` come sottoprocesso.
+M1 e M2 completati in questa sessione (M1 committato come `be26553`, M2 non ancora
+committato): backend reale secondo `API_CONTRACT.md` con archiviazione su share CIFS
+(ADR-007/008), frontend riscritto fedele al prototipo hi-fi (ADR-002) e collegato ai veri
+endpoint (niente piu' simulazione lato JS). Playwright/Chromium installati e verificati con
+un crawl reale end-to-end. Verifica visiva pixel-perfect del frontend nel browser non
+ancora confermata dall'utente (nessuno strumento di automazione browser disponibile in
+sessione: verificato funzionalmente via `curl`). Prossimo passo: M3, servizio di
+produzione. Vedi `current-work.md` per il dettaglio.

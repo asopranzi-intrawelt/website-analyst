@@ -84,6 +84,16 @@ Struttura cartella prodotta dal backend (deve combaciare con l'albero):
     <nome>.pdf
 ```
 
+Nota di correzione (15/07/2026, M1): lo schema sopra e' l'esempio illustrativo originale
+del brief, ma non corrisponde ai nomi reali prodotti da `scarica_sito_webcopy.py` (vedi
+`STACK.md`). L'implementazione di `/result` cammina la cartella di output effettiva e vi
+si trovano invece: `www.<dominio>/` (mirror con `webcopy-origin.txt`), `testi/`,
+`html_leggibile/`, `TESTI_COMPLETI.txt`, `conteggio.csv`, opzionale `_raw_html/`. Non
+esistono `_report.json`, `sitemap.txt` ne' una cartella `pdf/` separata (i PDF finiscono
+nel mirror, nel loro percorso originale). La forma del JSON (`type`/`path`/`depth`/`bytes`/
+`children`) resta quella qui sopra; sono solo i nomi di file/cartella reali a differire
+dall'esempio.
+
 ## 4. Download ZIP
 `GET /api/jobs/{job_id}/download`  → `application/zip`
 

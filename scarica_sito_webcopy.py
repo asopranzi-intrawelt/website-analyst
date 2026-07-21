@@ -590,9 +590,10 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
                 absu = canonicalize(urldefrag(urljoin(url, href))[0])
                 low = absu.lower()
 
-                # PDF con estensione esplicita: scaricati sempre
+                # PDF con estensione esplicita: rispetta --no-pdf come gli altri
                 if low.endswith(".pdf"):
-                    save_pdf(absu)
+                    if grab_pdf:
+                        save_pdf(absu)
                     continue
                 # endpoint di download senza estensione (KIID/prospetti serviti
                 # da /cms/delivery/media/ o /docs/getdoc/): solo con --grab-pdf,

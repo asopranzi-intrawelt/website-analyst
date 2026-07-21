@@ -8,7 +8,7 @@ covers-paths:
   - backend_esempio/**
   - frontend_esempio/**
   - API_CONTRACT.md
-last-verified-commit: babb092e15a27bf1eb672c25c84930de6a8308d5
+last-verified-commit: b31cdad
 ---
 
 # Stack applicativo

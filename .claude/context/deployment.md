@@ -21,6 +21,15 @@ pip install -r requirements.txt
 playwright install --with-deps chromium
 ```
 
+Fatto il 21/07/2026: `.venv` creato con l'intero `requirements.txt` installato (fastapi,
+uvicorn, playwright, beautifulsoup4, lxml, pdfminer.six) e il binario Chromium scaricato
+con `playwright install chromium` (senza `--with-deps`: nessuna libreria di sistema
+mancante su questa VM, il lancio headless ha funzionato al primo tentativo). Verificato con
+un crawl reale (`http://example.com/`, 1 pagina) sia da CLI sia attraverso il backend reale
+(`POST /api/jobs` -> SSE -> `/result` -> `/download`, zip valido con i file veri). Se in
+futuro un sito richiedesse `--headful` e il lancio fallisse per librerie mancanti, il
+comando di ripiego resta `playwright install-deps chromium` (richiede sudo).
+
 Fatto il 13/07/2026: il disco dati scsi1 (96G, `/dev/sdb1`, ext4, UUID
 `5cb1f056-8d7f-4d6d-af92-857bac1952c2`) e' montato su `/srv` (voce in `/etc/fstab`
 confermata). Il repository resta in `~/Scrivania/website-analyst`: si e' verificato che il

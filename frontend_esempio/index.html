@@ -3,72 +3,413 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Estrattore testi sito</title>
+<title>Website Analyst — Estrattore testi sito</title>
+<link rel="stylesheet" href="design/colors_and_type.css">
 <style>
-  body{font-family:Segoe UI,system-ui,Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 16px;color:#1a1a1a}
-  h1{font-size:22px} label{display:block;margin:12px 0 4px;font-weight:600;font-size:14px}
-  input,select{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:14px;box-sizing:border-box}
-  .row{display:flex;gap:12px}.row>div{flex:1}
-  button{margin-top:16px;padding:10px 18px;border:0;border-radius:6px;background:#1f497d;color:#fff;font-size:15px;cursor:pointer}
-  button:disabled{opacity:.5;cursor:default}
-  #stato{margin-top:20px;padding:12px;border:1px solid #ddd;border-radius:6px;background:#fafafa;display:none}
-  pre{background:#111;color:#eee;padding:10px;border-radius:6px;max-height:320px;overflow:auto;font-size:12px;white-space:pre-wrap}
-  .chk{display:flex;align-items:center;gap:6px;margin-top:22px}.chk input{width:auto}
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg-page); font-family: var(--font-sans); color: var(--fg-primary); }
+  input[type="text"], input[type="number"] { font-family: var(--font-sans); }
+  input[type="text"]:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: var(--scenia-purple);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--scenia-purple) 14%, transparent);
+  }
+  a { color: var(--fg-link); text-decoration: none; }
+  a:hover { color: var(--purple-700); text-decoration: underline; }
+  button { font-family: var(--font-sans); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes barPulse { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
+
+  .page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 56px 24px 96px; }
+  .topbar { width: 100%; max-width: 760px; display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
+
+  .step { display: none; width: 100%; max-width: 760px; }
+  .step.active { display: block; }
+
+  .card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-1); }
+  .card--form, .card--error { padding: 44px 44px 40px; }
+  .card--loading { padding: 48px 44px; animation: fadeUp 300ms ease both; }
+  .card--done { padding: 44px 44px 40px; }
+  #step-done.active, #step-error.active { animation: fadeUp 300ms ease both; }
+
+  .field-label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .field-error { display: none; color: var(--err); font-size: 13px; margin-top: 6px; }
+  .input-base {
+    width: 100%; color: var(--fg-primary); background: var(--bg-card);
+    border: 1px solid var(--border-strong); border-radius: 10px;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .input-lg { height: 46px; padding: 0 14px; font-size: 16px; }
+  .input-md { height: 44px; padding: 0 14px; font-size: 15px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 24px; }
+  .checks { display: flex; gap: 40px; margin-top: 28px; }
+  .chk { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 500; cursor: pointer; user-select: none; }
+  .chk input { width: 17px; height: 17px; accent-color: var(--scenia-purple); cursor: pointer; }
+
+  .btn-primary {
+    height: 48px; padding: 0 28px; display: inline-flex; align-items: center; gap: 10px;
+    font-size: 16px; font-weight: 600; color: var(--fg-on-accent); background: var(--scenia-purple);
+    border: none; border-radius: 10px; cursor: pointer; transition: background 200ms ease;
+  }
+  .btn-primary:hover { background: var(--purple-700); }
+  .btn-primary:disabled { opacity: .5; cursor: default; }
+  .btn-secondary {
+    height: 48px; padding: 0 22px; font-size: 16px; font-weight: 500; color: var(--fg-primary);
+    background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 10px;
+    cursor: pointer; transition: background 200ms ease;
+  }
+  .btn-secondary:hover { background: var(--bg-muted); }
+  #btn-submit { margin-top: 32px; }
+
+  .spinner {
+    width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border-subtle);
+    border-top-color: var(--scenia-purple); display: inline-block; animation: spin 800ms linear infinite; flex: none;
+  }
+  .progress-track { height: 8px; width: 100%; background: var(--bg-muted); border-radius: 999px; overflow: hidden; }
+  .progress-fill {
+    height: 100%; width: 0%; background: var(--scenia-gradient); border-radius: 999px;
+    transition: width 300ms ease; animation: barPulse 1.4s ease-in-out infinite;
+  }
+  .console {
+    margin-top: 28px; background: var(--night); border-radius: 12px; padding: 18px 20px;
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.7;
+    color: color-mix(in oklab, white 82%, transparent); height: 168px; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end;
+  }
+  .console-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .console-line .arrow { color: var(--scenia-teal); }
+
+  .ok-badge, .err-badge {
+    width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center;
+    justify-content: center; font-size: 15px; font-weight: 700; flex: none;
+  }
+  .ok-badge { background: var(--ok-bg); color: var(--ok); }
+  .err-badge { background: var(--err-bg); color: var(--err); }
+
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border-subtle);
+    border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; margin-bottom: 32px;
+  }
+  .stat { background: var(--bg-card); padding: 18px 20px; }
+  .stat-num { font-family: var(--font-serif); font-weight: 500; font-size: 30px; line-height: 1; }
+  .stat-label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-secondary); margin-top: 6px; }
+
+  .tree-box {
+    background: var(--paper); border: 1px solid var(--border-subtle); border-radius: 12px;
+    padding: 20px 22px; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.85;
+    max-height: 340px; overflow: auto;
+  }
+  .tree-row { display: flex; justify-content: space-between; gap: 16px; white-space: pre; }
+  .tree-row .name-dir { color: var(--scenia-purple); }
+  .tree-row .name-file { color: var(--fg-primary); }
+  .tree-row .name-muted { color: var(--fg-muted); }
+  .tree-meta { color: var(--fg-muted); font-size: 12px; flex: none; }
 </style>
 </head>
 <body>
-<h1>Estrattore testi da un sito</h1>
-<p>Inserisci l'URL del sito e avvia il download. Solo per uso interno / LAN.</p>
+<div class="page">
+  <div class="topbar">
+    <span style="font-weight:500; font-size:22px; letter-spacing:-0.01em;">Intr<em class="t-gradient" style="font-style:normal;">a</em>welt</span>
+    <span style="width:1px; height:22px; background:var(--border-strong);"></span>
+    <span class="t-eyebrow">Strumenti interni</span>
+  </div>
 
-<label>URL del sito</label>
-<input id="url" placeholder="https://www.sito.it/">
+  <!-- STEP 1 · form -->
+  <section id="step-form" class="step active">
+    <div class="card card--form">
+      <h1 style="font-family:var(--font-serif); font-weight:500; font-size:36px; line-height:1.15; letter-spacing:-0.01em; margin:0 0 8px;">Website <em class="t-gradient">Analyst</em></h1>
+      <p style="font-size:18px; font-weight:500; line-height:1.3; margin:0 0 10px;">Estrattore testi da un sito</p>
+      <p style="font-size:16px; line-height:1.5; color:var(--fg-secondary); margin:0 0 32px; max-width:56ch;">Inserisci l'URL del sito e avvia il download. Solo per uso interno / LAN.</p>
 
-<div class="row">
-  <div><label>Nome cartella output</label><input id="nome" value="output"></div>
-  <div><label>Max pagine</label><input id="max" type="number" value="300"></div>
-  <div><label>Delay (sec)</label><input id="delay" type="number" step="0.1" value="1.0"></div>
-</div>
-<div class="row">
-  <div class="chk"><input type="checkbox" id="pdf" checked><label style="margin:0">Scarica anche i PDF</label></div>
-  <div class="chk"><input type="checkbox" id="headful"><label style="margin:0">Headful (siti anti-bot; richiede xvfb)</label></div>
-</div>
+      <label class="field-label">URL del sito</label>
+      <input type="text" id="f-url" placeholder="https://www.sito.it/" class="input-base input-lg">
+      <div id="f-url-err" class="field-error"></div>
 
-<button id="go" onclick="avvia()">Avvia download</button>
+      <div class="grid3">
+        <div>
+          <label class="field-label">Nome cartella output</label>
+          <input type="text" id="f-folder" value="output" class="input-base input-md">
+        </div>
+        <div>
+          <label class="field-label">Max pagine</label>
+          <input type="number" id="f-max" value="300" min="1" max="300" class="input-base input-md">
+        </div>
+        <div>
+          <label class="field-label">Delay (sec)</label>
+          <input type="text" id="f-delay" value="1,0" class="input-base input-md">
+        </div>
+      </div>
 
-<div id="stato">
-  <div><b>Stato:</b> <span id="lbl">—</span> &nbsp; <a id="dl" href="#" style="display:none">⬇ Scarica ZIP</a></div>
-  <pre id="log"></pre>
+      <div class="checks">
+        <label class="chk"><input type="checkbox" id="f-pdf" checked> Scarica anche i PDF</label>
+        <label class="chk"><input type="checkbox" id="f-headful"> Headful (siti anti-bot; richiede xvfb)</label>
+      </div>
+
+      <button id="btn-submit" class="btn-primary">Avvia download</button>
+    </div>
+  </section>
+
+  <!-- STEP 2 · loading -->
+  <section id="step-loading" class="step">
+    <div class="card card--loading">
+      <div style="display:flex; align-items:center; gap:18px; margin-bottom:28px;">
+        <span class="spinner"></span>
+        <div>
+          <h2 style="font-family:var(--font-serif); font-weight:500; font-size:26px; margin:0 0 4px;">Download in corso</h2>
+          <p style="font-size:15px; color:var(--fg-secondary); margin:0;">Estrazione dei testi da <span id="l-host" style="color:var(--fg-primary); font-weight:500;">—</span> - non chiudere questa finestra.</p>
+        </div>
+      </div>
+
+      <div class="progress-track"><div id="l-bar" class="progress-fill"></div></div>
+      <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:13px; color:var(--fg-secondary);">
+        <span>Pagina <span id="l-cur">0</span> / <span id="l-tot">0</span></span>
+        <span id="l-pct">0%</span>
+      </div>
+
+      <div class="console"><div id="l-log"></div></div>
+    </div>
+  </section>
+
+  <!-- STEP 3 · riepilogo -->
+  <section id="step-done" class="step">
+    <div class="card card--done">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <span class="ok-badge">✓</span>
+        <h2 style="font-family:var(--font-serif); font-weight:500; font-size:28px; margin:0;">Estrazione <em class="t-gradient">completata</em></h2>
+      </div>
+      <p style="font-size:15px; color:var(--fg-secondary); margin:0 0 28px;">Cartella <span id="d-folder" class="t-mono"></span>/ generata dal backend.</p>
+
+      <div class="stats-grid">
+        <div class="stat"><div id="d-pages" class="stat-num">0</div><div class="stat-label">Pagine</div></div>
+        <div class="stat"><div id="d-pdfs" class="stat-num">0</div><div class="stat-label">PDF</div></div>
+        <div class="stat"><div id="d-files" class="stat-num">0</div><div class="stat-label">File totali</div></div>
+        <div class="stat"><div id="d-size" class="stat-num">0 B</div><div class="stat-label">Dimensione</div></div>
+      </div>
+
+      <div class="t-eyebrow" style="margin-bottom:12px;">Struttura della cartella</div>
+      <div id="d-tree" class="tree-box"></div>
+
+      <div style="display:flex; align-items:center; gap:16px; margin-top:32px;">
+        <a id="d-download" class="btn-primary" href="#" download>↓ Scarica <span id="d-zipname">output.zip</span></a>
+        <button id="btn-reset" class="btn-secondary">Nuovo download</button>
+        <span id="d-ziphint" class="t-caption" style="color:var(--fg-muted);">archivio .zip pronto</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 4 · errore -->
+  <section id="step-error" class="step">
+    <div class="card card--error">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <span class="err-badge">!</span>
+        <h2 style="font-family:var(--font-serif); font-weight:500; font-size:28px; margin:0;">Estrazione non riuscita</h2>
+      </div>
+      <p id="e-message" style="font-size:15px; color:var(--fg-secondary); margin:0 0 28px;"></p>
+      <button id="btn-retry" class="btn-primary">Riprova</button>
+    </div>
+  </section>
 </div>
 
 <script>
-let timer = null;
-async function avvia(){
-  const body = {
-    url: document.getElementById('url').value.trim(),
-    nome: document.getElementById('nome').value.trim() || 'output',
-    max_pagine: parseInt(document.getElementById('max').value) || 300,
-    delay: parseFloat(document.getElementById('delay').value) || 1.0,
-    headful: document.getElementById('headful').checked,
-    scarica_pdf: document.getElementById('pdf').checked
-  };
-  if(!body.url){ alert('Inserisci un URL'); return; }
-  document.getElementById('go').disabled = true;
-  const r = await fetch('/crawl', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-  if(!r.ok){ alert('Errore: '+(await r.text())); document.getElementById('go').disabled=false; return; }
-  const {job_id} = await r.json();
-  document.getElementById('stato').style.display='block';
-  if(timer) clearInterval(timer);
-  timer = setInterval(()=>poll(job_id), 2000);
-  poll(job_id);
+const MAX_LOG_LINES = 6;
+const MAX_TREE_SIBLINGS = 8;
+
+let sse = null;
+let logLines = [];
+
+function showStep(name) {
+  document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.id === 'step-' + name));
 }
-async function poll(id){
-  const r = await fetch('/jobs/'+id); if(!r.ok) return;
-  const j = await r.json();
-  document.getElementById('lbl').textContent = j.stato;
-  document.getElementById('log').textContent = j.log || '';
-  const dl = document.getElementById('dl');
-  if(j.stato==='completato'){ dl.style.display='inline'; dl.href='/jobs/'+id+'/zip'; }
-  if(j.stato==='completato' || j.stato==='errore'){ clearInterval(timer); document.getElementById('go').disabled=false; }
+
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function hostFromUrl(u) {
+  try { return new URL(u).hostname.replace(/^www\./, ''); }
+  catch (e) { return u.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] || u; }
+}
+
+function el(tag, className, text) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+// ---- form -> avvio job ----
+document.getElementById('btn-submit').addEventListener('click', async () => {
+  const url = document.getElementById('f-url').value.trim();
+  const urlErr = document.getElementById('f-url-err');
+  urlErr.style.display = 'none';
+  if (!url) {
+    urlErr.textContent = 'Inserisci un URL.';
+    urlErr.style.display = 'block';
+    return;
+  }
+  const body = {
+    url,
+    folder: document.getElementById('f-folder').value.trim() || 'output',
+    max_pages: parseInt(document.getElementById('f-max').value, 10) || 300,
+    delay_sec: document.getElementById('f-delay').value.trim() || '1,0',
+    pdf: document.getElementById('f-pdf').checked,
+    headful: document.getElementById('f-headful').checked,
+  };
+
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  let resp;
+  try {
+    resp = await fetch('/api/jobs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  } catch (e) {
+    btn.disabled = false;
+    showError('Impossibile contattare il backend.');
+    return;
+  }
+  if (!resp.ok) {
+    btn.disabled = false;
+    const err = await resp.json().catch(() => ({ error: 'errore sconosciuto' }));
+    showError(err.error || 'errore sconosciuto');
+    return;
+  }
+  const { job_id } = await resp.json();
+  btn.disabled = false;
+
+  document.getElementById('l-host').textContent = hostFromUrl(url);
+  document.getElementById('l-bar').style.width = '0%';
+  document.getElementById('l-cur').textContent = '0';
+  document.getElementById('l-tot').textContent = '0';
+  document.getElementById('l-pct').textContent = '0%';
+  logLines = [];
+  document.getElementById('l-log').innerHTML = '';
+  showStep('loading');
+  followEvents(job_id);
+});
+
+function appendLog(line) {
+  logLines.push(line);
+  logLines = logLines.slice(-MAX_LOG_LINES);
+  const box = document.getElementById('l-log');
+  box.innerHTML = '';
+  logLines.forEach(l => {
+    const row = el('div', 'console-line');
+    const arrow = el('span', 'arrow', '› ');
+    row.appendChild(arrow);
+    row.appendChild(document.createTextNode(l));
+    box.appendChild(row);
+  });
+}
+
+function followEvents(jobId) {
+  if (sse) sse.close();
+  sse = new EventSource('/api/jobs/' + jobId + '/events');
+
+  sse.addEventListener('progress', ev => {
+    const d = JSON.parse(ev.data);
+    if (d.percent !== undefined) {
+      document.getElementById('l-bar').style.width = d.percent + '%';
+      document.getElementById('l-pct').textContent = d.percent + '%';
+      document.getElementById('l-cur').textContent = d.current_page;
+      document.getElementById('l-tot').textContent = d.total_pages;
+    }
+    if (d.log) appendLog(d.log);
+  });
+
+  sse.addEventListener('done', async () => {
+    sse.close();
+    try {
+      const r = await fetch('/api/jobs/' + jobId + '/result');
+      if (!r.ok) { showError('Job completato ma il riepilogo non è disponibile.'); return; }
+      const res = await r.json();
+      renderDone(jobId, res);
+    } catch (e) {
+      showError('Job completato ma il riepilogo non è disponibile.');
+    }
+  });
+
+  sse.addEventListener('error', ev => {
+    sse.close();
+    const msg = ev.data ? (JSON.parse(ev.data).message || 'errore durante il crawl') : 'errore durante il crawl';
+    showError(msg);
+  });
+}
+
+function showError(message) {
+  document.getElementById('e-message').textContent = message;
+  showStep('error');
+}
+
+document.getElementById('btn-retry').addEventListener('click', () => showStep('form'));
+document.getElementById('btn-reset').addEventListener('click', () => showStep('form'));
+
+// ---- riepilogo ----
+function renderDone(jobId, res) {
+  document.getElementById('d-folder').textContent = res.folder;
+  document.getElementById('d-pages').textContent = res.stats.pages;
+  document.getElementById('d-pdfs').textContent = res.stats.pdfs;
+  document.getElementById('d-files').textContent = res.stats.total_files;
+  document.getElementById('d-size').textContent = fmtBytes(res.stats.total_bytes);
+  document.getElementById('d-zipname').textContent = res.folder + '.zip';
+  document.getElementById('d-download').href = '/api/jobs/' + jobId + '/download';
+
+  const box = document.getElementById('d-tree');
+  box.innerHTML = '';
+  const root = buildNestedTree(res.tree);
+  const rootRow = el('div', 'tree-row');
+  rootRow.appendChild(el('span', 'name-dir', (root.node.path || res.folder) + '/'));
+  rootRow.appendChild(el('span', 'tree-meta', ''));
+  box.appendChild(rootRow);
+  renderTreeChildren(root.children, '', box);
+
+  showStep('done');
+}
+
+// converte la lista piatta (pre-order, con "depth") in un albero annidato
+function buildNestedTree(flat) {
+  const root = { node: flat[0], children: [] };
+  let stack = [root];
+  for (let i = 1; i < flat.length; i++) {
+    const item = flat[i];
+    stack = stack.slice(0, item.depth);
+    const parent = stack[stack.length - 1];
+    const wrapper = { node: item, children: [] };
+    parent.children.push(wrapper);
+    if (item.type === 'dir') stack.push(wrapper);
+  }
+  return root;
+}
+
+function renderTreeChildren(children, prefix, box) {
+  const shown = children.slice(0, MAX_TREE_SIBLINGS);
+  const hidden = children.length - shown.length;
+  shown.forEach((child, i) => {
+    const isLastVisible = i === shown.length - 1 && hidden === 0;
+    const connector = isLastVisible ? '└─ ' : '├─ ';
+    const name = child.node.path.split('/').pop() + (child.node.type === 'dir' ? '/' : '');
+    const meta = child.node.type === 'dir'
+      ? (child.node.children || 0) + ' file'
+      : (child.node.bytes != null ? fmtBytes(child.node.bytes) : '');
+    const row = el('div', 'tree-row');
+    row.appendChild(el('span', child.node.type === 'dir' ? 'name-dir' : 'name-file', prefix + connector + name));
+    row.appendChild(el('span', 'tree-meta', meta));
+    box.appendChild(row);
+
+    const childPrefix = prefix + (isLastVisible ? '   ' : '│  ');
+    renderTreeChildren(child.children, childPrefix, box);
+  });
+  if (hidden > 0) {
+    const row = el('div', 'tree-row');
+    row.appendChild(el('span', 'name-muted', prefix + '└─ … +' + hidden + ' file'));
+    row.appendChild(el('span', 'tree-meta', ''));
+    box.appendChild(row);
+  }
 }
 </script>
 </body>
