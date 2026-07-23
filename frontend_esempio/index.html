@@ -170,6 +170,10 @@
       </div>
 
       <div class="console"><div id="l-log"></div></div>
+
+      <div style="margin-top:24px;">
+        <button id="btn-cancel" class="btn-secondary">Interrompi</button>
+      </div>
     </div>
   </section>
 
@@ -219,6 +223,7 @@ const MAX_TREE_SIBLINGS = 8;
 
 let sse = null;
 let logLines = [];
+let currentJobId = null;
 
 function showStep(name) {
   document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.id === 'step-' + name));
@@ -308,6 +313,7 @@ function appendLog(line) {
 }
 
 function followEvents(jobId) {
+  currentJobId = jobId;
   if (sse) sse.close();
   sse = new EventSource('/api/jobs/' + jobId + '/events');
 
@@ -324,6 +330,7 @@ function followEvents(jobId) {
 
   sse.addEventListener('done', async () => {
     sse.close();
+    currentJobId = null;
     try {
       const r = await fetch('/api/jobs/' + jobId + '/result');
       if (!r.ok) { showError('Job completato ma il riepilogo non è disponibile.'); return; }
@@ -336,8 +343,15 @@ function followEvents(jobId) {
 
   sse.addEventListener('error', ev => {
     sse.close();
+    currentJobId = null;
     const msg = ev.data ? (JSON.parse(ev.data).message || 'errore durante il crawl') : 'errore durante il crawl';
     showError(msg);
+  });
+
+  sse.addEventListener('cancelled', () => {
+    sse.close();
+    currentJobId = null;
+    showStep('form');
   });
 }
 
@@ -348,6 +362,36 @@ function showError(message) {
 
 document.getElementById('btn-retry').addEventListener('click', () => showStep('form'));
 document.getElementById('btn-reset').addEventListener('click', () => showStep('form'));
+
+document.getElementById('btn-cancel').addEventListener('click', async () => {
+  const jobId = currentJobId;
+  if (!jobId) { showStep('form'); return; }
+  const btn = document.getElementById('btn-cancel');
+  btn.disabled = true;
+  try {
+    await fetch('/api/jobs/' + jobId + '/cancel', { method: 'POST' });
+  } catch (e) {
+    // il backend potrebbe non essere raggiungibile: si torna comunque alla home
+  }
+  if (sse) sse.close();
+  currentJobId = null;
+  document.getElementById('btn-submit').disabled = false;
+  btn.disabled = false;
+  showStep('form');
+});
+
+// interruzione automatica se si chiude/ricarica/naviga via dalla pagina mentre
+// un job e' in corso: sendBeacon funziona in modo affidabile durante lo
+// scaricamento della pagina, a differenza di una fetch normale che verrebbe
+// interrotta a meta'. Senza questo, un job abbandonato resta in esecuzione sul
+// backend e occupa la coda (un solo crawl alla volta) finche' non finisce da solo.
+function cancelBeacon() {
+  if (currentJobId) {
+    navigator.sendBeacon('/api/jobs/' + currentJobId + '/cancel');
+  }
+}
+window.addEventListener('pagehide', cancelBeacon);
+window.addEventListener('beforeunload', cancelBeacon);
 
 // ---- riepilogo ----
 function renderDone(jobId, res) {

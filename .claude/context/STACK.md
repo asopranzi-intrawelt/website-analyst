@@ -55,8 +55,13 @@ prototipo hi-fi, niente palette o layout alternativi.
 
 `scarica_sito_webcopy.py` e' un crawler a file singolo (stdlib + Playwright/bs4/pdfminer):
 apre le pagine con Chromium headless, estrae testo pulito, segue i link interni, scarica
-i PDF collegati. Output per run: `testi/` (un .txt per risorsa), `html_leggibile/`,
-`TESTI_COMPLETI.txt`, `conteggio.csv`, mirror `www.dominio/`, opzionale `_raw_html/`.
+i PDF collegati. Output per run: `testi/` (un .txt per risorsa), `TESTI_COMPLETI.txt`,
+`conteggio.csv`, mirror `www.dominio/`, opzionale `_raw_html/`. `html_leggibile/` (dal
+23/07/2026) e' una copia stilizzata e navigabile di ogni pagina, non piu' testo minimale:
+Shadow DOM incorporato come `<template shadowrootmode="open">`, CSS esterni e
+`adoptedStyleSheets` incorporati, tab ARIA/Bootstrap rivelate prima della cattura, link
+interni riscritti in relativo con la stessa logica gia' usata per il mirror (stessa
+struttura a cartelle annidate, non piu' file piatti per slug).
 
 `backend_esempio/app.py` e' il punto di partenza per un endpoint `POST /api/jobs` che
 avvia il crawler come sottoprocesso, traccia i job (id/stato/log/cartella output) ed

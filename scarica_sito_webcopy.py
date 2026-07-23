@@ -25,6 +25,12 @@ STRUTTURA DI OUTPUT (identica a WebCopy)
     testi/                              <- testo pulito di pagine e PDF
     TESTI_COMPLETI.txt                  <- tutto concatenato (per conteggio)
     conteggio.csv                       <- URL, parole, caratteri per risorsa
+    html_leggibile/
+      index.htm                         <- copia stilizzata e navigabile di ogni
+      una-pagina/index.htm                 pagina (Shadow DOM incorporato come
+                                            <template shadowrootmode>, CSS/
+                                            adoptedStyleSheets incorporati, link
+                                            interni riscritti come nel mirror)
 
 NOTE SULLA FEDELTA' A WEBCOPY
   - I link interni vengono riscritti in percorso RELATIVO (../ , index.htm)
@@ -129,6 +135,81 @@ JS_DEEP_HTML = r"""
 }
 """
 
+# --- JS per html_leggibile/: serializza la pagina con Shadow DOM dichiarativo
+# e CSS "adottati" (adoptedStyleSheets, applicati via JS e altrimenti invisibili)
+# incorporati. A differenza di JS_DEEP_HTML (solo testo/struttura), qui si
+# preserva anche lo stile cosi' com'e' calcolato dal browser.
+JS_FLATTEN = r"""
+() => {
+  const VOID = new Set(['area','base','br','col','embed','hr','img','input',
+    'link','meta','param','source','track','wbr']);
+  function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function adoptedCss(sheets){
+    let css = '';
+    for (const sh of (sheets || [])) {
+      try { for (const r of sh.cssRules) css += r.cssText + '\n'; } catch(e) {}
+    }
+    return css;
+  }
+  function ser(node){
+    if (node.nodeType === 3) return esc(node.textContent);
+    if (node.nodeType !== 1) return '';
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'script' || tag === 'noscript') return '';
+    let attrs = '';
+    for (const a of (node.attributes||[])) {
+      attrs += ' ' + a.name + '="' + String(a.value).replace(/"/g,'&quot;') + '"';
+    }
+    if (VOID.has(tag)) return '<' + tag + attrs + '>';
+    let inner = '';
+    if (node.shadowRoot) {
+      let sh = '';
+      const acss = adoptedCss(node.shadowRoot.adoptedStyleSheets);
+      if (acss) sh += '<style>' + acss + '</style>';
+      node.shadowRoot.childNodes.forEach(c => { sh += ser(c); });
+      inner += '<template shadowrootmode="open">' + sh + '</template>';
+    }
+    node.childNodes.forEach(c => { inner += ser(c); });
+    return '<' + tag + attrs + '>' + inner + '</' + tag + '>';
+  }
+  const lang = document.documentElement.getAttribute('lang');
+  let headInner = '';
+  if (document.head) document.head.childNodes.forEach(c => { headInner += ser(c); });
+  const docCss = adoptedCss(document.adoptedStyleSheets);
+  if (docCss) headInner = '<style>' + docCss + '</style>' + headInner;
+  const body = document.body ? ser(document.body) : '';
+  return '<!DOCTYPE html>\n<html' + (lang ? ' lang="'+lang+'"' : '') +
+         '><head>' + headInner + '</head>' + body + '</html>';
+}
+"""
+
+# --- JS per html_leggibile/: rivela le tab standard (ARIA/Bootstrap) prima
+# della cattura, cosi' il loro contenuto non resta nascosto nella resa finale.
+# Generico e sicuro: agisce solo sui pannelli tab riconoscibili.
+JS_REVEAL_GENERIC = r"""
+() => {
+  function dq(sel){const a=[];(function w(r){try{r.querySelectorAll(sel).forEach(e=>a.push(e));}catch(e){}
+    r.querySelectorAll('*').forEach(e=>{if(e.shadowRoot)w(e.shadowRoot);});})(document);return a;}
+  function show(el){ try{
+    const cs = el.ownerDocument.defaultView.getComputedStyle(el);
+    if (cs){
+      if (cs.display==='none') el.style.setProperty('display','block','important');
+      if (cs.visibility==='hidden') el.style.setProperty('visibility','visible','important');
+      if (parseFloat(cs.opacity)===0) el.style.setProperty('opacity','1','important');
+    }
+    if (el.hasAttribute && el.hasAttribute('hidden')) el.removeAttribute('hidden');
+    if (el.getAttribute && el.getAttribute('aria-hidden')==='true') el.setAttribute('aria-hidden','false');
+  }catch(e){} }
+  dq('[role=tabpanel], .tab-pane, .tab-content > *').forEach(show);
+  dq('[role=tab][aria-controls], [data-toggle="tab"], [data-bs-toggle="tab"], [data-toggle="pill"]').forEach(t => {
+    let id = t.getAttribute('aria-controls');
+    if (!id){ const h = t.getAttribute('href')||''; if (h.startsWith('#')) id = h.slice(1); }
+    if (id){ try{ const root=t.getRootNode(); const p=(root.getElementById?root.getElementById(id):document.getElementById(id)); if(p) show(p); }catch(e){} }
+  });
+  return true;
+}
+"""
+
 
 # ------------------------------------------------------------------------
 # Mappatura URL -> percorso file in stile WebCopy
@@ -179,6 +260,78 @@ def rel_link(from_relpath: str, to_relpath: str) -> str:
     return rel.replace(os.sep, "/")
 
 
+def absolutize_css_urls(css_text: str, css_base: str) -> str:
+    """Rende assolute le url(...) e @import dentro un CSS scaricato, cosi'
+    font/immagini di sfondo caricano anche fuori dalla pagina originale."""
+    def repl(m):
+        raw = m.group(1).strip().strip("'\"")
+        if raw.startswith(("data:", "http://", "https://", "//")):
+            return f"url({raw})"
+        return f"url({urljoin(css_base, raw)})"
+    css_text = re.sub(r"url\(([^)]+)\)", repl, css_text)
+
+    def imp(m):
+        raw = m.group(1).strip().strip("'\"")
+        return f'@import "{urljoin(css_base, raw)}"'
+    return re.sub(r'@import\s+["\']([^"\']+)["\']', imp, css_text)
+
+
+def embed_page_css(soup, page_url: str, context, css_cache: dict):
+    """Incorpora nella pagina i CSS esterni (<link rel=stylesheet>) e rende
+    assolute le URL di CSS/style inline/immagini, cosi' html_leggibile/ resta
+    leggibile con lo stile originale anche aperto da un'altra cartella.
+    css_cache evita di riscaricare lo stesso foglio condiviso per ogni pagina."""
+    for link in soup.find_all("link", rel=lambda v: v and "stylesheet" in v):
+        href = link.get("href")
+        if not href:
+            link.decompose()
+            continue
+        abs_href = urljoin(page_url, href)
+        css = css_cache.get(abs_href)
+        if css is None:
+            try:
+                r = context.request.get(abs_href, timeout=30000)
+                css = r.text() if r.ok else ""
+            except Exception:  # noqa: BLE001
+                css = ""
+            css = absolutize_css_urls(css, abs_href) if css else ""
+            css_cache[abs_href] = css
+        if css:
+            style = soup.new_tag("style")
+            style.string = css
+            link.replace_with(style)
+        else:
+            link["href"] = abs_href
+
+    for st in soup.find_all("style"):
+        if st.string:
+            st.string.replace_with(absolutize_css_urls(st.string, page_url))
+
+    for el in soup.find_all(style=True):
+        stv = el.get("style", "")
+        if "url(" in stv:
+            el["style"] = absolutize_css_urls(stv, page_url)
+
+    for tag, attr in [("img", "src"), ("img", "data-src"), ("source", "src"),
+                      ("video", "poster"), ("use", "href"), ("use", "xlink:href")]:
+        for el in soup.find_all(tag):
+            v = el.get(attr)
+            if v and not v.startswith(("data:", "http://", "https://", "//")):
+                el[attr] = urljoin(page_url, v)
+    for el in soup.find_all(attrs={"srcset": True}):
+        parts = []
+        for piece in el["srcset"].split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            bits = piece.split()
+            bits[0] = urljoin(page_url, bits[0]) if not bits[0].startswith(("data:", "http", "//")) else bits[0]
+            parts.append(" ".join(bits))
+        el["srcset"] = ", ".join(parts)
+
+    return soup
+
+
 # Parametri di query di puro tracking/cache: NON cambiano il contenuto della
 # pagina, ma generano URL diversi -> duplicati. Vanno rimossi per non contare
 # piu' volte la stessa pagina (e non sprecare il budget --max sui doppioni).
@@ -222,52 +375,6 @@ def clean_text_from_html(html: str) -> str:
 
 def count_words(text: str) -> int:
     return len(re.findall(r"\b[\w'-]+\b", text, flags=re.UNICODE))
-
-
-def build_readable_html(url: str, html: str) -> str:
-    """
-    Costruisce un HTML autoconsistente e leggibile (solo testo strutturato),
-    senza dipendenze esterne: titoli, paragrafi e liste della pagina renderizzata.
-    Pensato per i Project Manager: si apre con doppio clic e mostra il contenuto.
-    """
-    soup = BeautifulSoup(html, "lxml")
-    for tag in soup(["script", "style", "noscript", "svg", "template"]):
-        tag.decompose()
-    root = soup.find("aps-app") or soup.body or soup
-
-    parts = []
-    for el in root.find_all(["h1", "h2", "h3", "h4", "li", "p"]):
-        txt = el.get_text(" ", strip=True)
-        if not txt:
-            continue
-        tag = el.name
-        if tag in ("h1", "h2", "h3", "h4"):
-            parts.append(f"<{tag}>{txt}</{tag}>")
-        elif tag == "li":
-            parts.append(f"<li>{txt}</li>")
-        else:
-            parts.append(f"<p>{txt}</p>")
-
-    # fallback: se non ha trovato struttura, usa il testo grezzo
-    if not parts:
-        for line in clean_text_from_html(html).splitlines():
-            parts.append(f"<p>{line}</p>")
-
-    body = "\n".join(parts)
-    return f"""<!DOCTYPE html>
-<html lang="it"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{url}</title>
-<style>
- body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:820px;
- margin:32px auto;padding:0 20px;line-height:1.55;color:#1a1a1a}}
- .src{{font-size:13px;color:#666;border-bottom:1px solid #ddd;padding-bottom:10px;margin-bottom:24px;word-break:break-all}}
- h1,h2,h3,h4{{line-height:1.25;margin:1.4em 0 .4em}} h1{{font-size:26px}} h2{{font-size:21px}}
- p,li{{font-size:16px}}
-</style></head><body>
-<div class="src">Pagina: <a href="{url}">{url}</a></div>
-{body}
-</body></html>"""
 
 
 def extract_pdf_text(path: str) -> str:
@@ -317,6 +424,11 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
     all_text_parts = []
     pdf_seen = set()
     pages_done = 0
+    warnings_log = []   # righe [XXX SKIP]/errori raccolte per _errori.log
+
+    def warn(msg: str):
+        print(msg)
+        warnings_log.append(msg)
 
     # Prima passata: scopri tutte le pagine e i PDF, salva HTML grezzo
     # (la riscrittura dei link la facciamo a fine crawl, quando conosciamo
@@ -324,6 +436,8 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
     page_html = {}        # url -> html renderizzato
     page_relpath = {}     # url -> relpath
     pdf_relpath = {}      # pdf_url -> relpath
+    leggibile_soup = {}   # url -> soup per html_leggibile/ (stile+Shadow DOM incorporati)
+    css_cache = {}        # url foglio di stile -> testo CSS gia' assolutizzato
 
     with sync_playwright() as pw:
         # --- launch: headless di default, ma --headful e' molto piu' affidabile
@@ -365,7 +479,7 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
             try:
                 pr = context.request.get(absu, timeout=60000)
             except Exception as e:  # noqa: BLE001
-                print(f"    [PDF SKIP] {absu}  ({e})")
+                warn(f"    [PDF SKIP] {absu}  ({e})")
                 return
             ctype = (pr.headers or {}).get("content-type", "").lower()
             if only_if_pdf and "pdf" not in ctype:
@@ -381,7 +495,7 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
                 with open(dest, "wb") as pf:
                     pf.write(pr.body())
             except Exception as e:  # noqa: BLE001
-                print(f"    [PDF SKIP] {absu}  ({e})")
+                warn(f"    [PDF SKIP] {absu}  ({e})")
                 return
             pdf_relpath[absu] = rp
             origin_entries.append((absu, rp, "application/pdf"))
@@ -405,7 +519,7 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
             try:
                 resp = page.goto(url, wait_until="domcontentloaded", timeout=60000)
             except Exception as e:  # noqa: BLE001
-                print(f"  [SKIP] {url}  ({e})")
+                warn(f"  [SKIP] {url}  ({e})")
                 continue
 
             # --- attendi che il contenuto JS sia EFFETTIVAMENTE renderizzato ---
@@ -476,6 +590,13 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
             except Exception:  # noqa: BLE001
                 pass
 
+            # rivela le tab standard (ARIA/Bootstrap) prima della cattura, per
+            # html_leggibile/: altrimenti il loro contenuto resta nascosto
+            try:
+                page.evaluate(JS_REVEAL_GENERIC)
+            except Exception:  # noqa: BLE001
+                pass
+
             page.wait_for_timeout(int(delay * 1000))
             html = page.content()
             # testo e HTML presi attraversando lo Shadow DOM (il framework APS
@@ -488,6 +609,12 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
                 live_html = page.evaluate(JS_DEEP_HTML)
             except Exception:  # noqa: BLE001
                 live_html = ""
+            # HTML per html_leggibile/: Shadow DOM come <template shadowrootmode>
+            # e CSS "adottati" incorporati, per una resa fedele allo stile originale
+            try:
+                flat_html = page.evaluate(JS_FLATTEN)
+            except Exception:  # noqa: BLE001
+                flat_html = ""
             pages_done += 1
 
             # --- dump dell'HTML renderizzato (opzione --dump-html) ---
@@ -520,7 +647,7 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
                 print(f"  caratteri di testo estratti: {visible_len}")
                 print(f"  screenshot salvato in: {shot}")
                 if 0 <= visible_len < 250:
-                    print("  ATTENZIONE: la pagina sembra ancora vuota.")
+                    warn(f"  ATTENZIONE: {url} sembra ancora vuota ({visible_len} caratteri).")
                     print("  -> Manda lo screenshot e questo output per la verifica.")
                 else:
                     print("  OK: contenuto estratto correttamente.")
@@ -560,19 +687,21 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
                          "caratteri": len(text), "file": os.path.relpath(tpath, out_dir)})
             all_text_parts.append(f"\n\n{'#'*70}\n# {url}\n{'#'*70}\n{text}")
 
-            # HTML leggibile autoconsistente (per i Project Manager)
-            lpath = os.path.join(dir_leggibile, slug_txt(url) + ".html")
-            n = 1
-            while os.path.exists(lpath):
-                lpath = os.path.join(dir_leggibile, slug_txt(url) + f"_{n}.html"); n += 1
-            # per l'HTML leggibile, usa il DOM vivo se piu' ricco
-            html_for_readable = html
-            if live_html and len(live_html) > 200:
-                html_for_readable = "<body>" + live_html + "</body>"
-            with open(lpath, "w", encoding="utf-8") as f:
-                f.write(build_readable_html(url, html_for_readable))
-
             print(f"[{pages_done}/{max_pages}] {url}  ({words} parole)")
+
+            # html_leggibile/: copia stilizzata e navigabile della pagina (Shadow
+            # DOM incorporato, CSS incorporati). Passo silenzioso e a se stante
+            # (scarica dal vivo i fogli di stile esterni: non deve ritardare la
+            # riga di avanzamento sopra, che e' il segnale osservato dalla UI).
+            # La scrittura su file avviene nella seconda passata, insieme alla
+            # riscrittura dei link, con lo stesso relpath usato per il mirror.
+            source_html = flat_html if flat_html and len(flat_html) > 200 else (
+                "<body>" + (live_html or "") + "</body>" if live_html and len(live_html) > 200 else html)
+            try:
+                leggibile_soup[url] = embed_page_css(
+                    BeautifulSoup(source_html, "lxml"), url, context, css_cache)
+            except Exception as e:  # noqa: BLE001
+                warn(f"  [LEGGIBILE SKIP] {url}  ({e})")
 
             # raccogli link. Saltato solo se NON si segue nulla e NON si scaricano
             # PDF (in --no-follow senza --grab-pdf si tiene solo la pagina resa).
@@ -648,7 +777,49 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
         except Exception as e:  # noqa: BLE001
             # una singola pagina problematica non deve abortire tutto l'export:
             # i riepiloghi finali (TESTI_COMPLETI/conteggio) vanno comunque scritti.
-            print(f"  [MIRROR SKIP] {url}  ({e})")
+            warn(f"  [MIRROR SKIP] {url}  ({e})")
+
+    # ---- stessa riscrittura link, per html_leggibile/ (stessa struttura del mirror) ----
+    indice_entries = []   # (titolo, relpath), per _indice.html
+    for url, leg_soup in leggibile_soup.items():
+        try:
+            relpath = page_relpath[url]
+            for a in leg_soup.find_all("a", href=True):
+                absu = urldefrag(urljoin(url, a["href"]))[0]
+                key = absu.rstrip("/")
+                if key in norm_map:
+                    a["href"] = rel_link(relpath, norm_map[key])
+            dest = os.path.join(dir_leggibile, relpath)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "w", encoding="utf-8") as f:
+                f.write(str(leg_soup))
+            title = (leg_soup.title.string if leg_soup.title and leg_soup.title.string else None)
+            indice_entries.append(((title or url).strip(), relpath))
+        except Exception as e:  # noqa: BLE001
+            warn(f"  [LEGGIBILE SKIP] {url}  ({e})")
+
+    # ---- _indice.html: elenco cliccabile di tutte le pagine, cosi' nessuna
+    # resta raggiungibile solo se gia' linkata dal menu del sito originale ----
+    if indice_entries:
+        righe = "\n".join(
+            f'<li><a href="{relpath}">{titolo}</a></li>'
+            for titolo, relpath in sorted(indice_entries, key=lambda t: t[1]))
+        indice_html = f"""<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<title>Indice — {root_netloc}</title>
+<style>
+ body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:760px;
+ margin:32px auto;padding:0 20px;line-height:1.6;color:#1a1a1a}}
+ li{{margin:4px 0}}
+</style></head><body>
+<h1>Indice delle pagine — {root_netloc}</h1>
+<p>{len(indice_entries)} pagine navigabili.</p>
+<ul>
+{righe}
+</ul>
+</body></html>"""
+        with open(os.path.join(dir_leggibile, "_indice.html"), "w", encoding="utf-8") as f:
+            f.write(indice_html)
 
     # ---- webcopy-origin.txt ----
     origin_path = os.path.join(site_root, "webcopy-origin.txt")
@@ -670,6 +841,16 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
         w.writeheader()
         w.writerows(rows)
 
+    # ---- _errori.log: raccolta di tutti gli avvisi/errori del crawl, per non
+    # doverli ripescare a mano nel log completo del job ----
+    with open(os.path.join(out_dir, "_errori.log"), "w", encoding="utf-8") as f:
+        if warnings_log:
+            f.write(f"{len(warnings_log)} avvisi durante questo crawl:\n\n")
+            f.write("\n".join(warnings_log))
+            f.write("\n")
+        else:
+            f.write("Nessun avviso: crawl completato senza errori rilevati.\n")
+
     tot_pagine = sum(r["parole"] for r in rows if r["tipo"] == "pagina")
     tot_pdf = sum(r["parole"] for r in rows if r["tipo"] == "pdf")
     print("\n" + "=" * 60)
@@ -679,6 +860,8 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
     print(f"PAROLE TOTALI (pagine+PDF): {tot_pagine + tot_pdf}")
     print(f"Testi per conteggio in: {os.path.abspath(dir_testi)}")
     print(f"HTML leggibile (per i PM) in: {os.path.abspath(dir_leggibile)}")
+    if warnings_log:
+        print(f"AVVISI: {len(warnings_log)} durante questo crawl, vedi _errori.log")
     print("=" * 60)
 
 

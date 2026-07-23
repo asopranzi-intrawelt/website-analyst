@@ -1,5 +1,123 @@
 # Work-log
 
+## 2026-07-23 — Interruzione automatica alla chiusura della pagina
+
+Episodio che ha motivato questa aggiunta: un job dell'utente (bemaritalia.it) e' rimasto in
+esecuzione sul backend ben oltre la sessione del browser che l'aveva avviato, tenendo
+occupata la coda (un solo crawl alla volta) e facendo sembrare "bloccati a 0%" i job
+successivi, che in realta' erano solo in coda dietro al primo mai interrotto. Confermato dal
+vivo (non solo dai test) che `POST /api/jobs/{id}/cancel` funziona correttamente sulla
+specifica esecuzione: usato per interrompere a mano i due job dell'utente ancora attivi
+prima di questa modifica.
+
+Aggiunta in `frontend_esempio/index.html` un'interruzione automatica quando la pagina viene
+chiusa, ricaricata o si naviga altrove mentre un job e' in corso: `pagehide` e
+`beforeunload` chiamano `navigator.sendBeacon('/api/jobs/{id}/cancel')`, l'unico modo
+affidabile di inviare una richiesta che sopravvive allo scaricamento della pagina (una
+`fetch` normale verrebbe interrotta a meta' dal browser). Nessuna modifica al backend: il
+bodyless POST che `sendBeacon` produce e' gia' compatibile con l'endpoint esistente
+(verificato anche prima, via `curl` senza corpo).
+
+## 2026-07-23 — Pulsante "Interrompi" durante il download
+
+Aggiunta la possibilita' di interrompere un job in corso dalla schermata "Download in
+corso". In `backend_esempio/app.py`: il sottoprocesso ora parte con `subprocess.Popen`
+(non piu' `subprocess.run` bloccante) e `start_new_session=True`, cosi' il crawler e il suo
+Chromium figlio finiscono nello stesso gruppo di processi e un'interruzione
+(`os.killpg`) li chiude entrambi senza lasciare Chromium orfano. Nuovo endpoint `POST
+/api/jobs/{id}/cancel`: su un job ancora in coda lo marca e non lo fa mai partire; su un
+job in esecuzione termina il gruppo di processi; in entrambi i casi lo stato finale e'
+`cancelled` (nuovo stato, distinto da `done`/`error`) e la cartella di output parziale viene
+rimossa (a differenza di un'interruzione manuale da riga di comando, dove si e' scelto di
+lasciare l'output parziale intatto). La SSE emette un evento `cancelled` dedicato. In
+`frontend_esempio/index.html`, un pulsante "Interrompi" nello step di avanzamento chiama il
+nuovo endpoint e torna al form.
+
+Verificato con un test dedicato (`test_cancel.py`, interrogando lo stato in memoria invece
+di consumare la SSE via TestClient, che la drena prima del tempo reale): interruzione di un
+job in esecuzione (processo davvero terminato, cartella rimossa, `/result` nega l'accesso),
+interruzione di un job in coda (mai avviato), interruzione rifiutata (409) su un job gia'
+concluso.
+
+Prima di distribuire la modifica sul server di prova, individuato un crawl reale
+dell'utente ancora attivo (`https://intrawelt.com/`, fino a 300 pagine, avviato prima
+dell'introduzione del pulsante): terminato a mano (processo Python + driver Playwright +
+Chromium, verificato nessun residuo) su richiesta esplicita dell'utente, lasciando intatto
+l'output parziale gia' scritto su disco.
+
+## 2026-07-23 — Bug: avanzamento fermo a 0% su siti reali (bemaritalia.it)
+
+L'utente ha riportato che l'avanzamento restava fermo a 0% provando un sito reale
+(bemaritalia.it) dopo l'aggiunta della resa navigabile di `html_leggibile/`. Causa: in
+`scarica_sito_webcopy.py`, la riga di stampa del progresso (`[n/max]`, quella che la SSE del
+backend legge per aggiornare la barra) era stata inserita **dopo** il nuovo passo di
+incorporazione CSS (`embed_page_css`, che scarica dal vivo ogni foglio di stile esterno della
+pagina) invece che prima. Su siti semplici (fixture locali, example.com) la differenza era
+impercettibile; su un sito reale con piu' fogli di stile la stampa del progresso restava
+bloccata finche' l'incorporazione CSS non finiva per l'intera pagina. Spostata la stampa
+subito dopo l'estrazione testo (dov'era in origine, prima che venisse aggiunto
+`html_leggibile/` ricco), cosi' l'incorporazione CSS e il download PDF restano passi silenziosi
+a valle del segnale di avanzamento osservato dalla UI, non piu' prima.
+
+Verificato con un crawl reale contro bemaritalia.it (2 pagine, headless, nessun `--headful`
+necessario in questo caso): completato senza problemi, `_errori.log` senza avvisi,
+`_indice.html` corretto. Emerso un limite noto (gia' segnalato nell'handoff originale del
+pacchetto, non un difetto di questa integrazione): ogni pagina di `html_leggibile/` incorpora
+per intero i CSS del framework, ripetuti in ogni pagina invece che condivisi -> ~16MB a
+pagina su questo sito, quindi un sito intero di centinaia di pagine puo' arrivare a diversi
+GB. Vale la pena tenerlo presente per il dimensionamento di `/srv` (ADR-006, oggi 96G
+condivisi con il progetto futuro Crawl4AI/Docling): non e' bloccante ora ma potrebbe esserlo
+su crawl grandi. Nessuna ottimizzazione (CSS condiviso in un file comune) implementata in
+questo giro.
+
+## 2026-07-23 — _indice.html, _errori.log e logging applicativo del backend
+
+Aggiunte due cose richieste prima di allineare git: in `scarica_sito_webcopy.py`, un
+`_indice.html` in `html_leggibile/` (elenco cliccabile di tutte le pagine con titolo, cosi'
+nessuna resta raggiungibile solo dal menu del sito originale) e un `_errori.log` nella
+cartella di output di ogni crawl, che raccoglie tutti gli avvisi gia' emessi durante il
+flusso (pagine fallite, PDF saltati, CSS non scaricabili, pagine sospettate vuote), con un
+conteggio finale a schermo. In `backend_esempio/app.py`, logging applicativo con il modulo
+`logging` standard (su stdout, cosi' sotto systemd finisce nel journal senza bisogno di un
+file dedicato): ciclo di vita del job (creato/avviato/completato/fallito/archiviato),
+pulizia TTL, e ogni `HTTPException` restituita da un endpoint, loggata centralmente
+nell'exception handler gia' esistente.
+
+Verificato con un crawl reale attraverso il backend vero (stessa fixture locale usata per
+`html_leggibile/`): `_indice.html` e `_errori.log` compaiono correttamente in `/result` e
+nello zip di `/download`, con contenuto coerente (l'unico avviso raccolto e' la diagnostica
+gia' esistente sulla prima pagina, non un nuovo problema). Suite di test automatica
+(`test_backend.py`) ripetuta, tutti i controlli superati.
+
+## 2026-07-23 — html_leggibile/ sostituito con la resa della "copia navigabile"
+
+L'utente aveva un pacchetto autonomo gia' pronto in `copia-navigabile-sito/` (due script:
+`explorer_sito.py` fase 1 scoperta via sitemap, `salva_sito_navigabile.py` fase 2
+ricostruzione stilizzata). Analizzato l'handoff: inizialmente proposta come seconda
+modalita' parallela nel prodotto (coerente con quanto dichiarato dall'handoff stesso), ma
+l'utente ha corretto l'intenzione reale, che era sostituire il contenuto di `html_leggibile/`
+dentro il job esistente, senza toccare tutto il resto. Rivisto il piano di conseguenza.
+
+Dato che `scarica_sito_webcopy.py` scopre gia' le pagine da solo (segue i link, non serve
+una sitemap), `explorer_sito.py` non serve: adattata solo la logica di resa per-pagina di
+`salva_sito_navigabile.py` (`JS_FLATTEN` per il Declarative Shadow DOM + `adoptedStyleSheets`,
+`JS_REVEAL_GENERIC` per rivelare le tab ARIA/Bootstrap prima della cattura, `process_page`
+rinominata `embed_page_css` per incorporare i CSS esterni e assolutizzare le URL di
+immagini/font), inserita nel loop di crawl esistente. Riusata la stessa seconda passata di
+riscrittura link gia' scritta per il mirror `www.<dominio>/` (stesso `page_relpath`/
+`rel_link`/`norm_map`), applicata anche a una nuova mappa `leggibile_soup`, per ottenere
+navigazione funzionante tra le pagine di `html_leggibile/` senza inventare una nuova logica
+di riscrittura. Rimossa `build_readable_html()` (sostituita, nessun residuo). Nessuna
+modifica a backend/frontend/API_CONTRACT.md: camminano il disco in modo generico e non
+assumono nulla sul contenuto di `html_leggibile/`.
+
+Verificato con una fixture locale (pagina con foglio di stile esterno, una tab ARIA nascosta,
+un web component con Shadow DOM e `adoptedStyleSheets` impostati via JS, due pagine linkate
+tra loro): CSS incorporato correttamente, tab rivelata, Shadow DOM serializzato in
+`<template shadowrootmode="open">` con lo stile adottato incluso, link riscritti e
+funzionanti in entrambe le direzioni. Confermato che `conteggio.csv`, `TESTI_COMPLETI.txt` e
+il mirror restano bit-per-bit invariati sullo stesso crawl di prova.
+
 ## 2026-07-21 — M2: frontend fedele al prototipo + Playwright/Chromium installati
 
 Riscritto `frontend_esempio/index.html` per riprodurre 1:1 il prototipo hi-fi

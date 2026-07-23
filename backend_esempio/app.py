@@ -12,10 +12,12 @@ import csv
 import io
 import ipaddress
 import json
+import logging
 import os
 import queue
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -41,6 +43,15 @@ PYTHON = sys.executable                                  # python del venv attiv
 
 OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
 
+# --- logging applicativo -----------------------------------------------------
+# Su stdout: sotto systemd finisce nel journal (journalctl -u estrattore) senza
+# bisogno di un file dedicato; in sviluppo e' visibile nel terminale di uvicorn.
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger("estrattore")
+
 # --- limiti e pattern --------------------------------------------------------
 MAX_PAGES_LIMIT = 300
 JOB_TTL_HOURS = 48
@@ -59,6 +70,7 @@ _JOB_QUEUE: "queue.Queue[str]" = queue.Queue()
 
 @app.exception_handler(HTTPException)
 async def _http_exc_handler(request: Request, exc: HTTPException):
+    logger.warning(f"{request.method} {request.url.path} -> {exc.status_code} {exc.detail}")
     return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
 
 
@@ -126,7 +138,9 @@ def _cleanup_old_jobs() -> None:
         try:
             if marker.exists() and entry.stat().st_mtime < cutoff:
                 shutil.rmtree(entry, ignore_errors=True)
-        except OSError:
+                logger.info(f"pulizia TTL: rimossa {entry} (oltre {JOB_TTL_HOURS}h, gia' archiviata)")
+        except OSError as e:
+            logger.warning(f"pulizia TTL: impossibile rimuovere {entry}: {e}")
             continue
 
 
@@ -141,31 +155,56 @@ def _last_log_line(log_path: Path) -> str:
 def _run_job(job_id: str) -> None:
     with _LOCK:
         job = JOBS[job_id]
+        if job.get("cancel_requested"):
+            job["status"] = "cancelled"
+            logger.info(f"job {job_id}: interrotto prima di partire (era in coda)")
+            return
         job["status"] = "running"
     out_dir = Path(job["out_dir"])
     log_path = Path(job["log_path"])
     cmd = job["cmd"]
+    logger.info(f"job {job_id} avviato: {' '.join(cmd)}")
 
     # PYTHONUNBUFFERED: senza questo, lo stdout dello script (rediretto su file,
     # non su un terminale) resta bufferizzato a blocchi e le righe di
     # avanzamento arrivano nel file tutte insieme solo alla fine del crawl,
     # invece che in tempo reale man mano che la SSE le legge.
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    ok = False
     try:
         with open(log_path, "w", encoding="utf-8") as logf:
-            proc = subprocess.run(cmd, cwd=str(ROOT), stdout=logf,
-                                   stderr=subprocess.STDOUT, env=env)
+            # start_new_session: il crawl e Chromium (suo figlio) finiscono nello
+            # stesso gruppo di processi, cosi' un'interruzione (os.killpg) li
+            # chiude entrambi invece di lasciare Chromium orfano.
+            proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
+                                     env=env, start_new_session=True)
+            with _LOCK:
+                job["proc"] = proc
+            proc.wait()
         ok = proc.returncode == 0
     except Exception as e:  # noqa: BLE001
-        ok = False
+        logger.error(f"job {job_id}: eccezione durante l'esecuzione: {e}")
         with open(log_path, "a", encoding="utf-8") as logf:
             logf.write(f"\n[BACKEND] eccezione: {e}\n")
+
+    with _LOCK:
+        cancelled = job.get("cancel_requested", False)
+        job.pop("proc", None)
+
+    if cancelled:
+        shutil.rmtree(out_dir, ignore_errors=True)
+        with _LOCK:
+            job["status"] = "cancelled"
+        logger.info(f"job {job_id}: interrotto dall'utente, output parziale rimosso")
+        return
 
     if ok:
         try:
             shutil.copytree(out_dir, ARCHIVE_BASE / out_dir.name, dirs_exist_ok=True)
             (out_dir / ".archiviato").touch()
+            logger.info(f"job {job_id}: archiviato su {ARCHIVE_BASE / out_dir.name}")
         except OSError as e:
+            logger.warning(f"job {job_id}: copia sulla share fallita: {e}")
             with open(log_path, "a", encoding="utf-8") as logf:
                 logf.write(f"\n[BACKEND] copia sulla share fallita: {e}\n")
 
@@ -173,9 +212,11 @@ def _run_job(job_id: str) -> None:
         job["status"] = "done" if ok else "error"
         if not ok:
             job["error"] = _last_log_line(log_path)
+    logger.info(f"job {job_id} completato" if ok else f"job {job_id} fallito: {job.get('error')}")
 
 
 def _worker_loop() -> None:
+    logger.info("worker avviato")
     while True:
         job_id = _JOB_QUEUE.get()
         try:
@@ -233,7 +274,26 @@ def create_job(req: CrawlRequest):
             "error": None, "created_at": time.time(),
         }
     _JOB_QUEUE.put(job_id)
+    logger.info(f"job {job_id} creato: url={req.url} folder={folder} "
+                f"max_pages={req.max_pages} delay_sec={req.delay_sec} headful={req.headful}")
     return {"job_id": job_id, "status": "running"}
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str):
+    job = _get_job_or_404(job_id)
+    with _LOCK:
+        if job["status"] not in ("queued", "running"):
+            raise HTTPException(409, "job non interrompibile (gia' concluso)")
+        job["cancel_requested"] = True
+        proc = job.get("proc")
+    if proc is not None:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    logger.info(f"job {job_id}: interruzione richiesta dall'utente")
+    return {"job_id": job_id, "status": "cancelling"}
 
 
 @app.get("/api/jobs/{job_id}/events")
@@ -271,6 +331,9 @@ def job_events(job_id: str):
                 with _LOCK:
                     msg = JOBS[job_id].get("error") or "errore durante il crawl"
                 yield f"event: error\ndata: {json.dumps({'message': msg}, ensure_ascii=False)}\n\n"
+                break
+            if status == "cancelled":
+                yield f"event: cancelled\ndata: {json.dumps({'job_id': job_id})}\n\n"
                 break
             time.sleep(0.6)
 
