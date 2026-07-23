@@ -1,5 +1,34 @@
 # Work-log
 
+## 2026-07-23 — M3: servizio di produzione + hostname mDNS
+
+Creato l'utente di servizio dedicato `estrattore` (`useradd -r -s /usr/sbin/nologin -G
+intrawelt estrattore`): membro supplementare del gruppo `intrawelt` per ereditare i permessi
+di gruppo gia' presenti su home/Scrivania/repo (750/755/775), invece di allargare i permessi
+ad "altri". Due permessi puntuali mancanti: `chmod g+rx /home/intrawelt/.cache` (la home e'
+750: senza questo `estrattore` non avrebbe raggiunto `ms-playwright/`, gia' 775 ma
+irraggiungibile per via del genitore) e `chmod g+w /srv/output` (il gruppo aveva solo
+lettura). Riga fstab della share CIFS riallineata da `uid=intrawelt,gid=intrawelt` a
+`uid=estrattore,gid=estrattore` (mount.cifs risolve i nomi da solo, non serve conoscere gli
+id numerici) e rimontata: verificato che il mount mostra `uid=997,gid=984`, combacianti con
+`id estrattore`. Aggiornato `estrattore.service` con `ARCHIVE_BASE` e
+`PLAYWRIGHT_BROWSERS_PATH` espliciti (senza quest'ultimo, `estrattore` non avrebbe trovato
+il Chromium scaricato nella cache di `intrawelt`), installato in `/etc/systemd/system/`,
+abilitato e avviato.
+
+Verificato con un crawl reale end-to-end contro il servizio vero (porta 8000, non piu' la
+8010 di test): job completato, file scritti sulla share reale con proprietario
+`estrattore` (confermato via `ls`), log di ciclo di vita del job visibili in
+`journalctl -u estrattore`, `/result` e `/download` corretti. Fermato il server di prova ad
+hoc (porta 8010) usato nelle sessioni precedenti, non piu' necessario.
+
+Su richiesta separata dell'utente, prima di M3: configurato un hostname mDNS
+(`website-analyst.local`) tramite Avahi, gia' installato e attivo di default su questa VM
+(bastava impostare `host-name=website-analyst` in `/etc/avahi/avahi-daemon.conf` e
+riavviare il servizio). Il suffisso `.local` e' obbligatorio per il protocollo mDNS, non
+opzionale; un nome senza sarebbe servito solo con un DNS vero della rete Intrawelt, fuori
+dalla portata di questa VM.
+
 ## 2026-07-23 — Interruzione automatica alla chiusura della pagina
 
 Episodio che ha motivato questa aggiunta: un job dell'utente (bemaritalia.it) e' rimasto in

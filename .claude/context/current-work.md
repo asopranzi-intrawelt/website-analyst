@@ -51,18 +51,25 @@ automazione browser disponibile in questa sessione).
 Installati Playwright/Chromium sul `.venv` del progetto e verificato un crawl reale
 end-to-end (CLI e backend/frontend), chiudendo l'ultima domanda aperta rimasta da M1.
 
+## Stato al 23/07/2026 (M3 completato)
+
+Servizio di produzione attivo: utente dedicato `estrattore`, permessi su repo/cache
+Playwright/`/srv/output` sistemati, share CIFS rimontata con l'identita' di `estrattore`,
+`estrattore.service` installato/abilitato in systemd, verificato con un crawl reale
+end-to-end (archiviazione sulla share confermata, log applicativo in `journalctl`). Vedi
+`deployment.md` per il dettaglio dei comandi. Nel frattempo aggiunte anche due funzionalita'
+non pianificate ma emerse dall'uso reale: pulsante "Interrompi" per fermare un job in corso
+(con interruzione automatica anche alla chiusura della pagina), e un hostname mDNS
+(`website-analyst.local`) per non dover scrivere l'IP della VM.
+
 ## Domande aperte
 
-Prossimo passo: M3, servizio di produzione (`estrattore.service`, utente dedicato, bind
-LAN-only) — vedi `roadmap.md`. Nessun altro blocco noto su M1/M2.
+Nessun blocco noto su M1/M2/M3. Prossimo passo eventuale: M4 (OCR per PDF scansionati,
+opzionale) — vedi `roadmap.md`.
 
 Verifica visiva pixel-perfect del frontend nel browser non ancora confermata dall'utente
-in questa sessione (solo verifica funzionale via `curl`).
-
-Follow-up di infrastruttura: quando M3 crea l'utente di servizio dedicato `estrattore`, la
-riga `/etc/fstab` della share CIFS va riallineata da `uid=intrawelt,gid=intrawelt` a quello
-(vedi `deployment.md`, ADR-008). `sudo systemctl daemon-reload` andrebbe eseguito una volta
-per allineare systemd alla voce fstab gia' aggiunta.
+(solo verifica funzionale via `curl`); il flusso end-to-end reale (incluso il pulsante
+Interrompi) e' pero' stato usato e confermato funzionante dall'utente stesso in sessione.
 
 Il file `~/Scrivania/passworg_gmail_intra` (password Gmail in chiaro, sospetta) va messo
 in sicurezza — vedi `design-and-security.md`, non ancora risolto.

@@ -11,14 +11,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# utente non-root dedicato (crearlo con: sudo useradd -r -s /usr/sbin/nologin estrattore);
-# il repository resta sotto la home di intrawelt (~/Scrivania/website-analyst), quindi
-# questo utente va aggiunto a un gruppo con permesso di lettura/esecuzione su quel percorso
-# prima di attivare il servizio, oppure il repository va reso leggibile (es. chmod o+rx sulla
-# home e sulla cartella del progetto).
+# utente non-root dedicato: sudo useradd -r -s /usr/sbin/nologin -G intrawelt estrattore
+# (il repository resta sotto la home di intrawelt, quindi estrattore va aggiunto al gruppo
+# "intrawelt" per ereditare i permessi di gruppo gia' presenti su home/Scrivania/repo).
 User=estrattore
 WorkingDirectory=/home/intrawelt/Scrivania/website-analyst
 Environment=OUTPUT_BASE=/srv/output
+Environment=ARCHIVE_BASE=/mnt/downloaded-websites
+# senza questa, l'utente estrattore non troverebbe il Chromium di Playwright,
+# scaricato nella cache dell'utente intrawelt (serve anche "chmod g+rx" su
+# /home/intrawelt/.cache, vedi deployment.md)
+Environment=PLAYWRIGHT_BROWSERS_PATH=/home/intrawelt/.cache/ms-playwright
 # usa il python del virtualenv
 ExecStart=/home/intrawelt/Scrivania/website-analyst/.venv/bin/uvicorn backend_esempio.app:app --host 192.168.20.24 --port 8000
 Restart=on-failure
