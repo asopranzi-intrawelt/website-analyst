@@ -224,6 +224,11 @@ const MAX_TREE_SIBLINGS = 8;
 let sse = null;
 let logLines = [];
 let currentJobId = null;
+// true solo se il job in corso e' stato avviato da QUESTA scheda (dal form):
+// governa l'interruzione automatica alla chiusura pagina (cancelBeacon), che
+// non deve scattare per una scheda aperta solo per osservare un job altrui
+// tramite ?job=<id> nell'URL (vedi resumeFromUrl piu' sotto).
+let ownJob = false;
 
 function showStep(name) {
   document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.id === 'step-' + name));
@@ -295,6 +300,7 @@ document.getElementById('btn-submit').addEventListener('click', async () => {
   logLines = [];
   document.getElementById('l-log').innerHTML = '';
   showStep('loading');
+  ownJob = true;
   followEvents(job_id);
 });
 
@@ -386,12 +392,27 @@ document.getElementById('btn-cancel').addEventListener('click', async () => {
 // interrotta a meta'. Senza questo, un job abbandonato resta in esecuzione sul
 // backend e occupa la coda (un solo crawl alla volta) finche' non finisce da solo.
 function cancelBeacon() {
-  if (currentJobId) {
+  if (currentJobId && ownJob) {
     navigator.sendBeacon('/api/jobs/' + currentJobId + '/cancel');
   }
 }
 window.addEventListener('pagehide', cancelBeacon);
 window.addEventListener('beforeunload', cancelBeacon);
+
+// ripristino della pagina di controllo: apre direttamente la vista di
+// avanzamento di un job gia' esistente (es. dopo aver perso la connessione
+// SSE su un crawl lungo), passando ?job=<id> nell'URL. Non avvia un job
+// nuovo, non tocca il backend oltre alla normale SSE di lettura: ownJob
+// resta false, quindi chiudere/ricaricare questa scheda NON interrompe il
+// job osservato (vedi cancelBeacon sopra).
+function resumeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const jobId = params.get('job');
+  if (!jobId) return;
+  showStep('loading');
+  followEvents(jobId);
+}
+resumeFromUrl();
 
 // ---- riepilogo ----
 function renderDone(jobId, res) {
