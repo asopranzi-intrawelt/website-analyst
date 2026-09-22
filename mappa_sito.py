@@ -65,6 +65,24 @@ _RE_PAGINAZIONE = re.compile(r"/page/\d+/?", re.I)
 _RE_DATA_ARTICOLO = re.compile(r"^/\d{4}/\d{2}(?:/\d{2})?/")
 
 
+def _canon(url: str) -> str:
+    """Chiave di deduplica per 'e' gia' nota' nel fallback di scoperta: stessa
+    nozione di equivalenza di same_site() per www. (qui estesa anche allo
+    scheme e alla barra finale sul path radice), usata SOLO per il controllo
+    di appartenenza, mai per sostituire l'URL originale nel manifesto. Senza
+    questa normalizzazione, un link interno scritto con uno scheme, un
+    prefisso www o una barra finale diversi da quelli della sitemap
+    (riscontrato per davvero su un sito reale, dove sitemap e menu usavano
+    forme diverse anche per la sola homepage: 'https://dominio/' contro
+    'http://dominio' senza barra) non risulta 'gia' coperto': viene
+    ri-accodato e ri-renderizzato con Chromium come se fosse una pagina
+    nuova, moltiplicando per quante varianti il sito usa nei suoi stessi
+    link."""
+    p = urlparse(url)
+    path = p.path.rstrip("/") or "/"
+    return p.netloc.lower().replace("www.", "", 1) + path
+
+
 def classify(url: str, root_netloc: str, include_sub: bool, in_sitemap: bool) -> str:
     """Classifica un URL solo in base al suo pattern (mai al contenuto della
     pagina): 'pdf', 'esterno', 'archivio_tag', 'archivio_categoria',
@@ -307,6 +325,7 @@ def esplora(start_url, out_path, max_pages, delay, include_sub):
         # diventa la scoperta primaria, esattamente come nel vecchio
         # explorer_sito.py, delimitata da --max.
         rendered = set()
+        known_canon = {_canon(u) for u in known}
         queue = deque([start])
         page = ctx.new_page()
         done = 0
@@ -322,6 +341,7 @@ def esplora(start_url, out_path, max_pages, delay, include_sub):
                 continue
             done += 1
             known.setdefault(url, None)
+            known_canon.add(_canon(url))
             try:
                 hrefs = page.eval_on_selector_all("a[href]", "els=>els.map(e=>e.getAttribute('href'))")
             except Exception:  # noqa: BLE001
@@ -340,9 +360,10 @@ def esplora(start_url, out_path, max_pages, delay, include_sub):
                 if not same_site(absu, root_netloc, include_sub):
                     known.setdefault(absu, None)  # dominio esterno: registrato, mai renderizzato
                     continue
-                if absu in known:
-                    continue  # gia' nota (da sitemap o gia' scoperta): non riaccodare
+                if _canon(absu) in known_canon:
+                    continue  # gia' nota, anche sotto una forma diversa di scheme/www: non riaccodare
                 known.setdefault(absu, None)
+                known_canon.add(_canon(absu))
                 if absu not in rendered:
                     queue.append(absu)
                     new_found += 1

@@ -1,6 +1,6 @@
 # API Contract - Website Analyst
 
-Contratto tra frontend (3 stati) e backend crawler. Reimplementa ciò che nel prototipo è simulato da `startDownload` / `buildResult`. Base path suggerito: `/api`.
+Contratto tra frontend (sei stati: form, scan, select, loading, done, error — vedi §5 per scan/select, aggiunti dal 22/09/2026) e backend crawler. Reimplementa ciò che nel prototipo è simulato da `startDownload` / `buildResult`. Base path suggerito: `/api`.
 
 ## 1. Avvio job
 `POST /api/jobs`

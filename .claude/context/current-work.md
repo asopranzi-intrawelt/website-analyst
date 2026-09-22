@@ -34,10 +34,16 @@ Installati Playwright/Chromium sul `.venv` del progetto e verificato un crawl re
 
 Servizio di produzione attivo: utente dedicato `estrattore`, permessi su repo/cache Playwright/`/srv/output` sistemati, share CIFS rimontata con l'identita' di `estrattore`, `estrattore.service` installato/abilitato in systemd, verificato con un crawl reale end-to-end (archiviazione sulla share confermata, log applicativo in `journalctl`). Vedi `deployment.md` per il dettaglio dei comandi. Nel frattempo aggiunte anche due funzionalita' non pianificate ma emerse dall'uso reale: pulsante "Interrompi" per fermare un job in corso (con interruzione automatica anche alla chiusura della pagina), e un hostname mDNS (`website-analyst.local`) per non dover scrivere l'IP della VM.
 
+## Stato al 22/09/2026 (branch feat/selezione-perimetro, Stage 1-4 completati)
+
+Fase di selezione del perimetro prima del download (motivata dall'incidente reale di bergamofiera.it: 1513 risorse/4GB scaricate contro le 125 che servivano davvero, scarto a mano a valle con rischio di disallineamento fra gli output). Nuovo script di ricognizione `mappa_sito.py` (mappa un sito senza scaricarne il contenuto, sitemap-first), nuova famiglia di endpoint `/api/scans` (stessa coda condivisa dei job di crawl), campo opzionale `selection` su `POST /api/jobs` (una regola tipo+date+esclusioni, valutata contro il manifesto di una ricognizione, non un elenco letterale di URL) e nuovo flag `--pdf-urls-file` su `scarica_sito_webcopy.py` per includere PDF specifici in un crawl vincolato. `frontend_esempio/index.html` passa da quattro a sei stati, con una schermata di selezione ad albero (checkbox a tre stati, propagazione genitore-figli, esclusione in blocco degli archivi CMS, filtro data per gli articoli, salvataggio/caricamento selezione come JSON). Dettaglio completo per stage in `progress.md`, contratto in `API_CONTRACT.md` §1 e §5, ruolo dei file in `STACK.md`.
+
 ## Domande aperte
 
 Nessun blocco noto su M1/M2/M3. Prossimo passo eventuale: M4 (OCR per PDF scansionati, opzionale) — vedi `roadmap.md`.
 
 Verifica visiva pixel-perfect del frontend nel browser non ancora confermata dall'utente (solo verifica funzionale via `curl`); il flusso end-to-end reale (incluso il pulsante Interrompi) e' pero' stato usato e confermato funzionante dall'utente stesso in sessione.
+
+La nuova schermata di selezione ad albero (Stage 4, branch feat/selezione-perimetro) e' verificata solo a livello di logica isolata (`node --check` sulla sintassi, test dedicato sulla logica pura di alberizzazione/regola, coerenza degli id fra markup e JS) e di backend end-to-end (`test_stage3.py`): manca ancora una verifica visiva nel browser (nessuno strumento di automazione browser disponibile in questa sessione), da confermare dall'utente prima del merge.
 
 Il file `~/Scrivania/passworg_gmail_intra` (password Gmail in chiaro, sospetta) va messo in sicurezza — vedi `design-and-security.md`, non ancora risolto.

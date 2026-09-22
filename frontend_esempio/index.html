@@ -62,7 +62,6 @@
     cursor: pointer; transition: background 200ms ease;
   }
   .btn-secondary:hover { background: var(--bg-muted); }
-  #btn-submit { margin-top: 32px; }
 
   .spinner {
     width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border-subtle);
@@ -107,6 +106,52 @@
   .tree-row .name-file { color: var(--fg-primary); }
   .tree-row .name-muted { color: var(--fg-muted); }
   .tree-meta { color: var(--fg-muted); font-size: 12px; flex: none; }
+
+  .btn-row { display: flex; align-items: center; gap: 14px; margin-top: 32px; }
+
+  .scan-counter { font-size: 13px; color: var(--fg-secondary); margin-top: 10px; }
+
+  .sel-box {
+    background: var(--paper); border: 1px solid var(--border-subtle); border-radius: 12px;
+    padding: 10px 8px; font-family: var(--font-mono); font-size: 13.5px; line-height: 2.1;
+    max-height: 420px; overflow: auto;
+  }
+  .sel-row { display: flex; align-items: center; gap: 8px; white-space: pre; padding: 1px 8px; border-radius: 6px; }
+  .sel-row:hover { background: var(--bg-muted); }
+  .sel-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--scenia-purple); cursor: pointer; flex: none; }
+  .sel-row .sel-name { color: var(--fg-primary); white-space: pre; }
+  .sel-row .sel-name.is-dir { color: var(--scenia-purple); }
+  .sel-row .sel-meta { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+  .sel-row .sel-date { color: var(--fg-muted); font-size: 12px; }
+  .sel-row .sel-count { color: var(--fg-muted); font-size: 12px; }
+
+  .type-badge {
+    font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+    padding: 2px 8px; border-radius: var(--r-pill); white-space: nowrap;
+  }
+  .type-istituzionale { background: var(--purple-50); color: var(--purple-700); }
+  .type-articolo { background: var(--teal-50); color: var(--teal-700); }
+  .type-pdf { background: var(--gold-50); color: var(--gold-700); }
+  .type-archivio_tag, .type-archivio_categoria, .type-archivio_autore, .type-archivio_paginazione {
+    background: var(--bg-muted); color: var(--fg-muted);
+  }
+  .type-esterno { background: var(--warn-bg); color: var(--warn); }
+  .type-da_rivedere { background: var(--err-bg); color: var(--err); }
+
+  .sel-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 20px; }
+  .sel-toolbar .btn-chip {
+    height: 34px; padding: 0 14px; font-size: 13px; font-weight: 500; color: var(--fg-primary);
+    background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: var(--r-pill); cursor: pointer;
+  }
+  .sel-toolbar .btn-chip:hover { background: var(--bg-muted); }
+  .sel-toolbar .date-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg-secondary); }
+  .sel-toolbar .date-field input {
+    height: 34px; padding: 0 10px; font-size: 13px; color: var(--fg-primary); background: var(--bg-card);
+    border: 1px solid var(--border-strong); border-radius: var(--r-md); font-family: var(--font-sans);
+  }
+  .sel-summary { display: flex; gap: 24px; margin: 18px 0 4px; font-size: 13px; color: var(--fg-secondary); }
+  .sel-summary strong { color: var(--fg-primary); font-weight: 600; }
+  .sel-hint { font-size: 13px; color: var(--fg-muted); margin: 8px 0 0; }
 </style>
 </head>
 <body>
@@ -148,11 +193,68 @@
         <label class="chk"><input type="checkbox" id="f-headful"> Headful (siti anti-bot; richiede xvfb)</label>
       </div>
 
-      <button id="btn-submit" class="btn-primary">Avvia download</button>
+      <div class="btn-row">
+        <button id="btn-submit" class="btn-primary">Avvia download</button>
+        <button id="btn-scan" class="btn-secondary">Analizza la struttura prima di scaricare</button>
+      </div>
     </div>
   </section>
 
-  <!-- STEP 2 · loading -->
+  <!-- STEP 2a · ricognizione (mappa_sito.py) -->
+  <section id="step-scan" class="step">
+    <div class="card card--loading">
+      <div style="display:flex; align-items:center; gap:18px; margin-bottom:28px;">
+        <span class="spinner"></span>
+        <div>
+          <h2 style="font-family:var(--font-serif); font-weight:500; font-size:26px; margin:0 0 4px;">Ricognizione in corso</h2>
+          <p style="font-size:15px; color:var(--fg-secondary); margin:0;">Mappatura della struttura di <span id="s-host" style="color:var(--fg-primary); font-weight:500;">—</span>, nessun contenuto scaricato in questa fase.</p>
+        </div>
+      </div>
+
+      <div class="scan-counter">Risorse ricognite: <span id="s-cur">0</span></div>
+      <div class="console" style="margin-top:14px;"><div id="s-log"></div></div>
+
+      <div style="margin-top:24px;">
+        <button id="btn-scan-cancel" class="btn-secondary">Interrompi</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2b · selezione del perimetro -->
+  <section id="step-select" class="step">
+    <div class="card card--done">
+      <h2 style="font-family:var(--font-serif); font-weight:500; font-size:28px; margin:0 0 8px;">Seleziona il <em class="t-gradient">perimetro</em></h2>
+      <p style="font-size:15px; color:var(--fg-secondary); margin:0 0 24px;">Scegli le risorse da scaricare da <span id="t-host" class="t-mono">—</span>. Solo cio' che resta spuntato entra nel download.</p>
+
+      <div class="sel-toolbar">
+        <label class="chk" style="font-size:13px;"><input type="checkbox" id="t-master"> Seleziona / deseleziona tutto</label>
+        <button id="t-btn-noarchivi" class="btn-chip">Escludi archivi CMS (tag/categoria/autore/paginazione)</button>
+        <button id="t-btn-save" class="btn-chip">↓ Salva selezione</button>
+        <button id="t-btn-load" class="btn-chip">↑ Carica selezione</button>
+        <input type="file" id="t-load-file" accept="application/json" style="display:none;">
+      </div>
+      <div class="sel-toolbar">
+        <span class="date-field">Articoli dal <input type="date" id="t-data-da"></span>
+        <span class="date-field">al <input type="date" id="t-data-a"></span>
+        <span class="sel-hint" style="margin:0;">si applica solo alle risorse di tipo articolo, in aggiunta alla spunta sull'albero</span>
+      </div>
+
+      <div id="t-tree" class="sel-box"></div>
+
+      <div class="sel-summary">
+        <span><strong id="t-count-pagine">0</strong> pagine</span>
+        <span><strong id="t-count-pdf">0</strong> PDF</span>
+        <span><strong id="t-count-tot">0</strong> risorse su <span id="t-count-all">0</span> totali</span>
+      </div>
+
+      <div class="btn-row">
+        <button id="t-btn-submit" class="btn-primary">Avvia download della selezione</button>
+        <button id="t-btn-back" class="btn-secondary">Torna al form</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 3 · loading (crawl vero, aperto o vincolato a una selezione) -->
   <section id="step-loading" class="step">
     <div class="card card--loading">
       <div style="display:flex; align-items:center; gap:18px; margin-bottom:28px;">
@@ -177,7 +279,7 @@
     </div>
   </section>
 
-  <!-- STEP 3 · riepilogo -->
+  <!-- STEP 4 · riepilogo -->
   <section id="step-done" class="step">
     <div class="card card--done">
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
@@ -204,7 +306,7 @@
     </div>
   </section>
 
-  <!-- STEP 4 · errore -->
+  <!-- STEP 5 · errore -->
   <section id="step-error" class="step">
     <div class="card card--error">
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
@@ -223,12 +325,26 @@ const MAX_TREE_SIBLINGS = 8;
 
 let sse = null;
 let logLines = [];
-let currentJobId = null;
-// true solo se il job in corso e' stato avviato da QUESTA scheda (dal form):
-// governa l'interruzione automatica alla chiusura pagina (cancelBeacon), che
-// non deve scattare per una scheda aperta solo per osservare un job altrui
-// tramite ?job=<id> nell'URL (vedi resumeFromUrl piu' sotto).
+let currentId = null;
+// 'job' o 'scan': quale delle due famiglie di endpoint (/api/jobs o
+// /api/scans) sta seguendo currentId - governa quale URL di eventi/cancel
+// usare, condiviso perche' entrambe girano sulla stessa coda backend.
+let currentKind = null;
+// true solo se il job/scan in corso e' stato avviato da QUESTA scheda (dal
+// form): governa l'interruzione automatica alla chiusura pagina
+// (cancelBeacon), che non deve scattare per una scheda aperta solo per
+// osservare un job altrui tramite ?job=<id> nell'URL (vedi resumeFromUrl
+// piu' sotto).
 let ownJob = false;
+// url del sito su cui e' stata avviata la ricognizione corrente: si riusa
+// per il crawl vincolato, indipendente da eventuali modifiche successive al
+// campo f-url (irraggiungibile comunque, lo step form resta nascosto).
+let currentSiteUrl = null;
+let currentScanId = null;
+let currentManifest = null;
+// url -> { tipo, data, checked }, ground truth delle spunte sull'albero di
+// selezione, popolata da buildResourceState() al termine di una ricognizione.
+let resourceState = new Map();
 
 function showStep(name) {
   document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', s.id === 'step-' + name));
@@ -252,45 +368,48 @@ function el(tag, className, text) {
   return e;
 }
 
-// ---- form -> avvio job ----
-document.getElementById('btn-submit').addEventListener('click', async () => {
+// ---- form -> avvio job (crawl aperto o, dalla selezione, vincolato) ----
+function readUrlField() {
   const url = document.getElementById('f-url').value.trim();
   const urlErr = document.getElementById('f-url-err');
   urlErr.style.display = 'none';
   if (!url) {
     urlErr.textContent = 'Inserisci un URL.';
     urlErr.style.display = 'block';
-    return;
+    return null;
   }
+  return url;
+}
+
+async function startJob(url, selection) {
   const body = {
     url,
     folder: document.getElementById('f-folder').value.trim() || 'output',
-    max_pages: parseInt(document.getElementById('f-max').value, 10) || 300,
     delay_sec: document.getElementById('f-delay').value.trim() || '1,0',
-    pdf: document.getElementById('f-pdf').checked,
     headful: document.getElementById('f-headful').checked,
   };
+  if (selection) {
+    body.selection = selection;
+  } else {
+    body.max_pages = parseInt(document.getElementById('f-max').value, 10) || 300;
+    body.pdf = document.getElementById('f-pdf').checked;
+  }
 
-  const btn = document.getElementById('btn-submit');
-  btn.disabled = true;
   let resp;
   try {
     resp = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
   } catch (e) {
-    btn.disabled = false;
     showError('Impossibile contattare il backend.');
     return;
   }
   if (!resp.ok) {
-    btn.disabled = false;
     const err = await resp.json().catch(() => ({ error: 'errore sconosciuto' }));
     showError(err.error || 'errore sconosciuto');
     return;
   }
   const { job_id } = await resp.json();
-  btn.disabled = false;
 
   document.getElementById('l-host').textContent = hostFromUrl(url);
   document.getElementById('l-bar').style.width = '0%';
@@ -301,13 +420,22 @@ document.getElementById('btn-submit').addEventListener('click', async () => {
   document.getElementById('l-log').innerHTML = '';
   showStep('loading');
   ownJob = true;
-  followEvents(job_id);
+  followEvents('job', job_id);
+}
+
+document.getElementById('btn-submit').addEventListener('click', async () => {
+  const url = readUrlField();
+  if (!url) return;
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  await startJob(url, null);
+  btn.disabled = false;
 });
 
-function appendLog(line) {
+function appendLog(line, boxId) {
   logLines.push(line);
   logLines = logLines.slice(-MAX_LOG_LINES);
-  const box = document.getElementById('l-log');
+  const box = document.getElementById(boxId || 'l-log');
   box.innerHTML = '';
   logLines.forEach(l => {
     const row = el('div', 'console-line');
@@ -318,45 +446,66 @@ function appendLog(line) {
   });
 }
 
-function followEvents(jobId) {
-  currentJobId = jobId;
+// segue via SSE un job di crawl o una ricognizione: le due famiglie di
+// endpoint condividono lo stesso schema events/cancel (vedi API_CONTRACT.md
+// §5), solo la forma dell'evento 'progress' e l'esito di 'done' differiscono.
+function followEvents(kind, id) {
+  currentId = id;
+  currentKind = kind;
   if (sse) sse.close();
-  sse = new EventSource('/api/jobs/' + jobId + '/events');
+  sse = new EventSource('/api/' + kind + 's/' + id + '/events');
 
   sse.addEventListener('progress', ev => {
     const d = JSON.parse(ev.data);
-    if (d.percent !== undefined) {
-      document.getElementById('l-bar').style.width = d.percent + '%';
-      document.getElementById('l-pct').textContent = d.percent + '%';
-      document.getElementById('l-cur').textContent = d.current_page;
-      document.getElementById('l-tot').textContent = d.total_pages;
+    if (kind === 'job') {
+      if (d.percent !== undefined) {
+        document.getElementById('l-bar').style.width = d.percent + '%';
+        document.getElementById('l-pct').textContent = d.percent + '%';
+        document.getElementById('l-cur').textContent = d.current_page;
+        document.getElementById('l-tot').textContent = d.total_pages;
+      }
+      if (d.log) appendLog(d.log, 'l-log');
+    } else {
+      if (d.pagina_corrente !== undefined) document.getElementById('s-cur').textContent = d.pagina_corrente;
+      if (d.log) appendLog(d.log, 's-log');
     }
-    if (d.log) appendLog(d.log);
   });
 
   sse.addEventListener('done', async () => {
     sse.close();
-    currentJobId = null;
-    try {
-      const r = await fetch('/api/jobs/' + jobId + '/result');
-      if (!r.ok) { showError('Job completato ma il riepilogo non è disponibile.'); return; }
-      const res = await r.json();
-      renderDone(jobId, res);
-    } catch (e) {
-      showError('Job completato ma il riepilogo non è disponibile.');
+    currentId = null;
+    if (kind === 'job') {
+      try {
+        const r = await fetch('/api/jobs/' + id + '/result');
+        if (!r.ok) { showError('Job completato ma il riepilogo non è disponibile.'); return; }
+        const res = await r.json();
+        renderDone(id, res);
+      } catch (e) {
+        showError('Job completato ma il riepilogo non è disponibile.');
+      }
+    } else {
+      try {
+        const r = await fetch('/api/scans/' + id + '/manifest');
+        if (!r.ok) { showError('Ricognizione completata ma il manifesto non è disponibile.'); return; }
+        const manifest = await r.json();
+        renderSelection(id, manifest);
+      } catch (e) {
+        showError('Ricognizione completata ma il manifesto non è disponibile.');
+      }
     }
   });
 
   sse.addEventListener('error', ev => {
     sse.close();
-    currentJobId = null;
-    const msg = ev.data ? (JSON.parse(ev.data).message || 'errore durante il crawl') : 'errore durante il crawl';
+    currentId = null;
+    const defaultMsg = kind === 'job' ? 'errore durante il crawl' : 'errore durante la ricognizione';
+    const msg = ev.data ? (JSON.parse(ev.data).message || defaultMsg) : defaultMsg;
     showError(msg);
   });
 
   sse.addEventListener('cancelled', () => {
     sse.close();
-    currentJobId = null;
+    currentId = null;
     showStep('form');
   });
 }
@@ -369,31 +518,34 @@ function showError(message) {
 document.getElementById('btn-retry').addEventListener('click', () => showStep('form'));
 document.getElementById('btn-reset').addEventListener('click', () => showStep('form'));
 
-document.getElementById('btn-cancel').addEventListener('click', async () => {
-  const jobId = currentJobId;
-  if (!jobId) { showStep('form'); return; }
-  const btn = document.getElementById('btn-cancel');
-  btn.disabled = true;
+async function cancelCurrent(btn) {
+  const id = currentId;
+  const kind = currentKind;
+  if (!id) { showStep('form'); return; }
+  if (btn) btn.disabled = true;
   try {
-    await fetch('/api/jobs/' + jobId + '/cancel', { method: 'POST' });
+    await fetch('/api/' + kind + 's/' + id + '/cancel', { method: 'POST' });
   } catch (e) {
     // il backend potrebbe non essere raggiungibile: si torna comunque alla home
   }
   if (sse) sse.close();
-  currentJobId = null;
+  currentId = null;
   document.getElementById('btn-submit').disabled = false;
-  btn.disabled = false;
+  if (btn) btn.disabled = false;
   showStep('form');
-});
+}
+document.getElementById('btn-cancel').addEventListener('click', () => cancelCurrent(document.getElementById('btn-cancel')));
+document.getElementById('btn-scan-cancel').addEventListener('click', () => cancelCurrent(document.getElementById('btn-scan-cancel')));
 
 // interruzione automatica se si chiude/ricarica/naviga via dalla pagina mentre
-// un job e' in corso: sendBeacon funziona in modo affidabile durante lo
-// scaricamento della pagina, a differenza di una fetch normale che verrebbe
-// interrotta a meta'. Senza questo, un job abbandonato resta in esecuzione sul
-// backend e occupa la coda (un solo crawl alla volta) finche' non finisce da solo.
+// un job o una ricognizione e' in corso: sendBeacon funziona in modo affidabile
+// durante lo scaricamento della pagina, a differenza di una fetch normale che
+// verrebbe interrotta a meta'. Senza questo, un job abbandonato resta in
+// esecuzione sul backend e occupa la coda (un solo crawl alla volta) finche'
+// non finisce da solo.
 function cancelBeacon() {
-  if (currentJobId && ownJob) {
-    navigator.sendBeacon('/api/jobs/' + currentJobId + '/cancel');
+  if (currentId && ownJob) {
+    navigator.sendBeacon('/api/' + currentKind + 's/' + currentId + '/cancel');
   }
 }
 window.addEventListener('pagehide', cancelBeacon);
@@ -410,9 +562,46 @@ function resumeFromUrl() {
   const jobId = params.get('job');
   if (!jobId) return;
   showStep('loading');
-  followEvents(jobId);
+  followEvents('job', jobId);
 }
 resumeFromUrl();
+
+// ---- form -> avvio ricognizione (mappa_sito.py) ----
+document.getElementById('btn-scan').addEventListener('click', async () => {
+  const url = readUrlField();
+  if (!url) return;
+  const btn = document.getElementById('btn-scan');
+  btn.disabled = true;
+  const maxPages = parseInt(document.getElementById('f-max').value, 10) || 60;
+  let resp;
+  try {
+    resp = await fetch('/api/scans', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, max_pages: maxPages }),
+    });
+  } catch (e) {
+    btn.disabled = false;
+    showError('Impossibile contattare il backend.');
+    return;
+  }
+  if (!resp.ok) {
+    btn.disabled = false;
+    const err = await resp.json().catch(() => ({ error: 'errore sconosciuto' }));
+    showError(err.error || 'errore sconosciuto');
+    return;
+  }
+  const { scan_id } = await resp.json();
+  btn.disabled = false;
+
+  currentSiteUrl = url;
+  document.getElementById('s-host').textContent = hostFromUrl(url);
+  document.getElementById('s-cur').textContent = '0';
+  logLines = [];
+  document.getElementById('s-log').innerHTML = '';
+  showStep('scan');
+  ownJob = true;
+  followEvents('scan', scan_id);
+});
 
 // ---- riepilogo ----
 function renderDone(jobId, res) {
@@ -476,6 +665,252 @@ function renderTreeChildren(children, prefix, box) {
     box.appendChild(row);
   }
 }
+
+// ---- selezione del perimetro (albero con checkbox a tre stati) ----
+// Tipi bulk-esclusi di default: archivi generati dal CMS (quasi sempre
+// rumore, vedi mappa_sito.py) e 'da_rivedere' (classificazione incerta,
+// decisione gia' presa in fase di piano: l'utente decide esplicitamente).
+const DEFAULT_CHECKED_TIPI = new Set(['istituzionale', 'articolo', 'pdf']);
+const TIPI_ARCHIVIO = ['archivio_tag', 'archivio_categoria', 'archivio_autore', 'archivio_paginazione'];
+
+function buildResourceState(manifest) {
+  const state = new Map();
+  manifest.risorse.forEach(r => {
+    state.set(r.url, { tipo: r.tipo, data: r.data, checked: DEFAULT_CHECKED_TIPI.has(r.tipo) });
+  });
+  return state;
+}
+
+// un articolo fuori dall'intervallo di date non entrera' MAI nel crawl (il
+// backend lo esclude comunque, vedi _resolve_selection in app.py), quindi la
+// sua spunta va disabilitata invece che lasciata interattiva: spuntarla
+// darebbe l'illusione di un'inclusione che il filtro data annulla comunque.
+function articoloInRange(r, dataDa, dataA) {
+  if (!dataDa && !dataA) return true;
+  if (!r.data) return false;
+  if (dataDa && r.data < dataDa) return false;
+  if (dataA && r.data > dataA) return false;
+  return true;
+}
+
+function isEffectivelyChecked(r, dataDa, dataA) {
+  const st = resourceState.get(r.url);
+  if (!st.checked) return false;
+  if (r.tipo === 'articolo') return articoloInRange(r, dataDa, dataA);
+  return true;
+}
+
+function currentDateRange() {
+  return {
+    dataDa: document.getElementById('t-data-da').value || null,
+    dataA: document.getElementById('t-data-a').value || null,
+  };
+}
+
+// stessa logica di _resolve_selection() in backend_esempio/app.py, riscritta
+// qui SOLO per l'anteprima lato client: la valutazione autorevole resta
+// quella del backend al momento dell'avvio del job.
+function evaluateRule(rule, manifest) {
+  const tipi = new Set(rule.tipi_inclusi || []);
+  const esclusi = new Set(rule.esclusioni || []);
+  const pagine = [], pdf = [];
+  manifest.risorse.forEach(r => {
+    if (esclusi.has(r.url) || !tipi.has(r.tipo)) return;
+    if (r.tipo === 'articolo' && (rule.data_da || rule.data_a) && !articoloInRange(r, rule.data_da, rule.data_a)) return;
+    (r.tipo === 'pdf' ? pdf : pagine).push(r.url);
+  });
+  return { pagine, pdf };
+}
+
+// deriva la regola (tipi_inclusi/esclusioni) dallo stato corrente delle
+// spunte: un tipo entra in tipi_inclusi se almeno una sua risorsa e'
+// spuntata; le risorse dello stesso tipo rimaste NON spuntate diventano
+// esclusioni puntuali. Il range di date resta un campo a parte, applicato
+// solo alle risorse di tipo articolo (vedi API_CONTRACT.md §1).
+function computeSelectionRule() {
+  const { dataDa, dataA } = currentDateRange();
+  const byTipo = {};
+  currentManifest.risorse.forEach(r => (byTipo[r.tipo] = byTipo[r.tipo] || []).push(r));
+  const tipiInclusi = [], esclusioni = [];
+  Object.entries(byTipo).forEach(([tipo, risorse]) => {
+    const checked = risorse.filter(r => resourceState.get(r.url).checked);
+    if (checked.length === 0) return;
+    tipiInclusi.push(tipo);
+    if (checked.length < risorse.length) {
+      risorse.forEach(r => { if (!resourceState.get(r.url).checked) esclusioni.push(r.url); });
+    }
+  });
+  return { scan_id: currentScanId, tipi_inclusi: tipiInclusi, data_da: dataDa, data_a: dataA, esclusioni };
+}
+
+function applyRuleToState(rule) {
+  const tipi = new Set(rule.tipi_inclusi || []);
+  const esclusi = new Set(rule.esclusioni || []);
+  currentManifest.risorse.forEach(r => {
+    let checked = tipi.has(r.tipo) && !esclusi.has(r.url);
+    if (checked && r.tipo === 'articolo' && (rule.data_da || rule.data_a) && !articoloInRange(r, rule.data_da, rule.data_a)) {
+      checked = false;
+    }
+    resourceState.get(r.url).checked = checked;
+  });
+  document.getElementById('t-data-da').value = rule.data_da || '';
+  document.getElementById('t-data-a').value = rule.data_a || '';
+}
+
+// raccoglie ricorsivamente le risorse (nodi 'risorsa') sotto un nodo
+// dell'albero annidato, per governare figli da un genitore e per calcolare
+// lo stato a tre livelli (checked/unchecked/indeterminate) di un genitore.
+function collectResources(node) {
+  const out = [];
+  if (node.node.type === 'risorsa') out.push(node.node);
+  node.children.forEach(c => out.push(...collectResources(c)));
+  return out;
+}
+
+function renderSelection(scanId, manifest) {
+  currentScanId = scanId;
+  currentManifest = manifest;
+  resourceState = buildResourceState(manifest);
+  document.getElementById('t-host').textContent = hostFromUrl(currentSiteUrl || manifest.sito || '');
+  document.getElementById('t-data-da').value = '';
+  document.getElementById('t-data-a').value = '';
+  renderSelectionTree();
+  showStep('select');
+}
+
+function renderSelectionTree() {
+  const box = document.getElementById('t-tree');
+  box.innerHTML = '';
+  const root = buildNestedTree(currentManifest.albero);
+  const { dataDa, dataA } = currentDateRange();
+  renderSelectTreeChildren(root.children, '', box, dataDa, dataA);
+  updateMasterCheckbox(dataDa, dataA);
+  updateSelectionSummary(dataDa, dataA);
+}
+
+function updateMasterCheckbox(dataDa, dataA) {
+  const all = currentManifest.risorse;
+  const checkedCount = all.filter(r => isEffectivelyChecked(r, dataDa, dataA)).length;
+  const master = document.getElementById('t-master');
+  master.checked = checkedCount > 0 && checkedCount === all.length;
+  master.indeterminate = checkedCount > 0 && checkedCount < all.length;
+}
+
+function updateSelectionSummary(dataDa, dataA) {
+  const rule = computeSelectionRule();
+  const { pagine, pdf } = evaluateRule(rule, currentManifest);
+  document.getElementById('t-count-pagine').textContent = pagine.length;
+  document.getElementById('t-count-pdf').textContent = pdf.length;
+  document.getElementById('t-count-tot').textContent = pagine.length + pdf.length;
+  document.getElementById('t-count-all').textContent = currentManifest.risorse.length;
+}
+
+function onSelectionChanged() {
+  renderSelectionTree();
+}
+
+function renderSelectTreeChildren(children, prefix, box, dataDa, dataA) {
+  children.forEach((child, i) => {
+    const isLast = i === children.length - 1;
+    const connector = isLast ? '└─ ' : '├─ ';
+    const node = child.node;
+    const segName = node.path.split('/').pop();
+    const row = el('div', 'sel-row');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+
+    if (node.type === 'dir') {
+      const resources = collectResources(child);
+      const checkedCount = resources.filter(r => isEffectivelyChecked(r, dataDa, dataA)).length;
+      cb.checked = resources.length > 0 && checkedCount === resources.length;
+      cb.indeterminate = checkedCount > 0 && checkedCount < resources.length;
+      cb.disabled = resources.length === 0;
+      cb.addEventListener('change', () => {
+        resources.forEach(r => { resourceState.get(r.url).checked = cb.checked; });
+        onSelectionChanged();
+      });
+      row.appendChild(cb);
+      row.appendChild(el('span', 'sel-name is-dir', prefix + connector + segName + '/'));
+      row.appendChild(el('span', 'sel-count', resources.length + ' risorse'));
+    } else {
+      const r = node;
+      const inRange = r.tipo !== 'articolo' || articoloInRange(r, dataDa, dataA);
+      cb.checked = resourceState.get(r.url).checked && inRange;
+      cb.disabled = !inRange;
+      cb.addEventListener('change', () => {
+        resourceState.get(r.url).checked = cb.checked;
+        onSelectionChanged();
+      });
+      row.appendChild(cb);
+      row.appendChild(el('span', 'sel-name', prefix + connector + segName));
+      const meta = el('span', 'sel-meta');
+      meta.appendChild(el('span', 'type-badge type-' + r.tipo, r.tipo));
+      if (r.tipo === 'articolo') {
+        meta.appendChild(el('span', 'sel-date', r.data ? r.data + (inRange ? '' : ' (fuori intervallo)') : 'data ignota'));
+      }
+      row.appendChild(meta);
+    }
+    box.appendChild(row);
+
+    const childPrefix = prefix + (isLast ? '   ' : '│  ');
+    renderSelectTreeChildren(child.children, childPrefix, box, dataDa, dataA);
+  });
+}
+
+document.getElementById('t-master').addEventListener('change', ev => {
+  const checked = ev.target.checked;
+  currentManifest.risorse.forEach(r => { resourceState.get(r.url).checked = checked; });
+  onSelectionChanged();
+});
+
+document.getElementById('t-btn-noarchivi').addEventListener('click', () => {
+  currentManifest.risorse.forEach(r => {
+    if (TIPI_ARCHIVIO.includes(r.tipo)) resourceState.get(r.url).checked = false;
+  });
+  onSelectionChanged();
+});
+
+document.getElementById('t-data-da').addEventListener('change', onSelectionChanged);
+document.getElementById('t-data-a').addEventListener('change', onSelectionChanged);
+
+document.getElementById('t-btn-save').addEventListener('click', () => {
+  const rule = computeSelectionRule();
+  const blob = new Blob([JSON.stringify(rule, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'selezione-' + hostFromUrl(currentSiteUrl || '') + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById('t-btn-load').addEventListener('click', () => {
+  document.getElementById('t-load-file').click();
+});
+
+document.getElementById('t-load-file').addEventListener('change', async ev => {
+  const file = ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  let rule;
+  try {
+    rule = JSON.parse(await file.text());
+  } catch (e) {
+    showError('File di selezione non valido: JSON illeggibile.');
+    return;
+  }
+  applyRuleToState(rule);
+  renderSelectionTree();
+});
+
+document.getElementById('t-btn-back').addEventListener('click', () => showStep('form'));
+
+document.getElementById('t-btn-submit').addEventListener('click', async () => {
+  const btn = document.getElementById('t-btn-submit');
+  btn.disabled = true;
+  const selection = computeSelectionRule();
+  await startJob(currentSiteUrl, selection);
+  btn.disabled = false;
+});
 </script>
 </body>
 </html>
