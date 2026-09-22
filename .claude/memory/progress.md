@@ -1,5 +1,36 @@
 # Work-log
 
+## 2026-09-22 — Stage 2 (branch feat/selezione-perimetro): endpoint backend di ricognizione
+
+Secondo stage del piano approvato. Nuova famiglia di endpoint in `backend_esempio/app.py`,
+sullo stesso pattern gia' collaudato per `/api/jobs`: `POST /api/scans` (lancia
+`mappa_sito.py` come sottoprocesso), `GET /api/scans/{id}/events` (SSE, stesso tailing
+incrementale del log, pattern di avanzamento adattato a `[N]` invece di `[N/max]` dato
+che il totale non e' noto in anticipo durante la scoperta), `GET
+/api/scans/{id}/manifest` (il JSON classificato, `409` se non ancora completata), `POST
+/api/scans/{id}/cancel` (stesso meccanismo Popen+killpg gia' esistente).
+
+Decisione strutturale: `SCANS` resta un dizionario separato da `JOBS` (le due famiglie
+producono risultati di forma diversa: un archivio scaricato contro un singolo file
+manifesto), ma condividono la STESSA `_JOB_QUEUE` e lo stesso worker thread - ogni
+elemento in coda e' ora taggato `("job"|"scan", id)`, `_worker_loop` smista in base al
+tag. Necessario perche' sia un crawl sia una ricognizione aprono un Chromium: "un solo
+Chromium alla volta" vale fra le due famiglie di job, non solo fra due crawl. I manifesti
+vivono in `OUTPUT_BASE/_scans/` (non nella cartella di un job di crawl, non archiviati
+sulla share: sono dati di lavoro effimeri, non un deliverable). Nessuna pulizia TTL per
+le ricognizioni in questo stage, decisione deliberata: la loro dimensione e' trascurabile
+e lo Stage 3 deve ancora definire come un manifesto viene referenziato da un crawl
+vincolato, prematuro decidere una politica di scadenza prima di allora.
+
+Verificato con un test dedicato (`test_stage2.py`, un finto `mappa_sito.py` per
+rapidita'): ciclo di vita completo di una ricognizione (avvio, SSE con `pagina_corrente`,
+manifesto, `409` prima del completamento), ricognizione fallita, interruzione di una
+ricognizione in coda. Verificata esplicitamente la non-regressione sui job di crawl
+esistenti dopo il cambio della coda (stesso identico comportamento di prima). Verificato
+in modo esplicito il punto piu' delicato - la coda condivisa - avviando un crawl e poi
+una ricognizione mentre il primo era ancora "running": la ricognizione e' rimasta
+"queued" fino al completamento del crawl, confermato dai timestamp del log applicativo.
+
 ## 2026-09-22 — Stage 1 (branch feat/selezione-perimetro): script di ricognizione mappa_sito.py
 
 Primo stage della fase di selezione del perimetro prima del download (vedi piano

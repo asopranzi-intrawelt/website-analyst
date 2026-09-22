@@ -50,7 +50,7 @@ JSON sia in forma piatta (`risorse`, per valutare regole di selezione) sia gerar
 `buildNestedTree()` lato frontend). Riusa `same_site()` da `scarica_sito_webcopy.py` via
 import, non la duplica.
 
-`backend_esempio/app.py` e' il punto di partenza per un endpoint `POST /api/jobs` che avvia il crawler come sottoprocesso, traccia i job (id/stato/log/cartella output) ed espone `GET /api/jobs/{id}/events` (SSE), `GET /api/jobs/{id}/result` e `GET /api/jobs/{id}/download` secondo `API_CONTRACT.md`.
+`backend_esempio/app.py` e' il punto di partenza per un endpoint `POST /api/jobs` che avvia il crawler come sottoprocesso, traccia i job (id/stato/log/cartella output) ed espone `GET /api/jobs/{id}/events` (SSE), `GET /api/jobs/{id}/result` e `GET /api/jobs/{id}/download` secondo `API_CONTRACT.md`. Dal 22/09/2026 (branch `feat/selezione-perimetro`) espone anche `POST /api/scans` + `GET .../events` + `GET .../manifest` + `POST .../cancel`, che lanciano `mappa_sito.py` come sottoprocesso sullo stesso pattern; crawl e ricognizioni condividono la stessa coda a un job alla volta (`_JOB_QUEUE`, ogni elemento taggato `("job"|"scan", id)`), perche' entrambi aprono un Chromium.
 
 `frontend_esempio/index.html` e' il form + polling/SSE dei tre stati (form -> loading con log in tempo reale -> riepilogo con albero file e download zip), da rifinire secondo il prototipo in `frontend_esempio/design/`.
 

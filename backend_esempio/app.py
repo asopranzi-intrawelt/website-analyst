@@ -36,12 +36,15 @@ from pydantic import BaseModel, field_validator
 # --- percorsi ---------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent          # cartella del progetto
 SCRIPT = ROOT / "scarica_sito_webcopy.py"
+MAPPA_SITO_SCRIPT = ROOT / "mappa_sito.py"              # ricognizione, vedi ADR-001: mai reimplementata
 OUTPUT_BASE = Path(os.environ.get("OUTPUT_BASE", "/srv/output"))     # staging locale del crawl
 ARCHIVE_BASE = Path(os.environ.get("ARCHIVE_BASE", "/mnt/downloaded-websites"))  # share di rete
+SCANS_BASE = OUTPUT_BASE / "_scans"                     # manifesti di ricognizione, non archiviati
 FRONTEND = ROOT / "frontend_esempio" / "index.html"
 PYTHON = sys.executable                                  # python del venv attivo
 
 OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
+SCANS_BASE.mkdir(parents=True, exist_ok=True)
 
 # --- logging applicativo -----------------------------------------------------
 # Su stdout: sotto systemd finisce nel journal (journalctl -u estrattore) senza
@@ -63,9 +66,13 @@ if _DESIGN_DIR.exists():
     app.mount("/design", StaticFiles(directory=str(_DESIGN_DIR)), name="design")
 
 # --- stato job in memoria (per una coda persistente: usare un DB/file) ------
-JOBS: dict[str, dict] = {}
+JOBS: dict[str, dict] = {}          # crawl veri e propri
+SCANS: dict[str, dict] = {}         # ricognizioni (mappa_sito.py)
 _LOCK = threading.Lock()
-_JOB_QUEUE: "queue.Queue[str]" = queue.Queue()
+# coda unica condivisa tra crawl e ricognizioni: entrambi aprono un Chromium,
+# quindi "un solo Chromium alla volta" vale anche tra le due famiglie di job,
+# non solo tra due crawl. Ogni elemento e' ("job"|"scan", id).
+_JOB_QUEUE: "queue.Queue[tuple[str, str]]" = queue.Queue()
 
 
 @app.exception_handler(HTTPException)
@@ -88,6 +95,11 @@ class CrawlRequest(BaseModel):
         if isinstance(v, str):
             v = v.replace(",", ".")
         return float(v)
+
+
+class ScanRequest(BaseModel):
+    url: str
+    max_pages: int = 60   # max pagine rese con Chromium nel SOLO fallback di scoperta
 
 
 # --- validazione (SSRF, path traversal, limiti di risorse) -------------------
@@ -215,12 +227,64 @@ def _run_job(job_id: str) -> None:
     logger.info(f"job {job_id} completato" if ok else f"job {job_id} fallito: {job.get('error')}")
 
 
+def _run_scan(scan_id: str) -> None:
+    """Stesso schema di _run_job (Popen in un proprio gruppo di processi,
+    interrompibile con killpg), semplificato: una ricognizione produce un
+    solo file manifesto, non una cartella con archiviazione sulla share."""
+    with _LOCK:
+        scan = SCANS[scan_id]
+        if scan.get("cancel_requested"):
+            scan["status"] = "cancelled"
+            logger.info(f"scan {scan_id}: interrotto prima di partire (era in coda)")
+            return
+        scan["status"] = "running"
+    log_path = Path(scan["log_path"])
+    manifest_path = Path(scan["manifest_path"])
+    cmd = scan["cmd"]
+    logger.info(f"scan {scan_id} avviato: {' '.join(cmd)}")
+
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    ok = False
+    try:
+        with open(log_path, "w", encoding="utf-8") as logf:
+            proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
+                                     env=env, start_new_session=True)
+            with _LOCK:
+                scan["proc"] = proc
+            proc.wait()
+        ok = proc.returncode == 0 and manifest_path.exists()
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"scan {scan_id}: eccezione durante l'esecuzione: {e}")
+        with open(log_path, "a", encoding="utf-8") as logf:
+            logf.write(f"\n[BACKEND] eccezione: {e}\n")
+
+    with _LOCK:
+        cancelled = scan.get("cancel_requested", False)
+        scan.pop("proc", None)
+
+    if cancelled:
+        manifest_path.unlink(missing_ok=True)
+        with _LOCK:
+            scan["status"] = "cancelled"
+        logger.info(f"scan {scan_id}: interrotto dall'utente")
+        return
+
+    with _LOCK:
+        scan["status"] = "done" if ok else "error"
+        if not ok:
+            scan["error"] = _last_log_line(log_path)
+    logger.info(f"scan {scan_id} completata" if ok else f"scan {scan_id} fallita: {scan.get('error')}")
+
+
 def _worker_loop() -> None:
     logger.info("worker avviato")
     while True:
-        job_id = _JOB_QUEUE.get()
+        kind, item_id = _JOB_QUEUE.get()
         try:
-            _run_job(job_id)
+            if kind == "scan":
+                _run_scan(item_id)
+            else:
+                _run_job(item_id)
         finally:
             _JOB_QUEUE.task_done()
 
@@ -235,6 +299,14 @@ def _get_job_or_404(job_id: str) -> dict:
     if not job:
         raise HTTPException(404, "job non trovato")
     return job
+
+
+def _get_scan_or_404(scan_id: str) -> dict:
+    with _LOCK:
+        scan = SCANS.get(scan_id)
+    if not scan:
+        raise HTTPException(404, "ricognizione non trovata")
+    return scan
 
 
 # --- endpoint ------------------------------------------------------------------
@@ -273,7 +345,7 @@ def create_job(req: CrawlRequest):
             "out_dir": str(out_dir), "log_path": str(log_path), "cmd": cmd,
             "error": None, "created_at": time.time(),
         }
-    _JOB_QUEUE.put(job_id)
+    _JOB_QUEUE.put(("job", job_id))
     logger.info(f"job {job_id} creato: url={req.url} folder={folder} "
                 f"max_pages={req.max_pages} delay_sec={req.delay_sec} headful={req.headful}")
     return {"job_id": job_id, "status": "running"}
@@ -422,3 +494,102 @@ def job_download(job_id: str):
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/zip",
                               headers={"Content-Disposition": f'attachment; filename="{job["folder"]}.zip"'})
+
+
+# --- ricognizione (mappa_sito.py) -----------------------------------------
+# Stessa famiglia di endpoint di /api/jobs, stesso pattern di validazione/SSE/
+# cancel, ma per il manifesto classificato invece che per l'archivio scaricato.
+@app.post("/api/scans", status_code=202)
+def create_scan(req: ScanRequest):
+    _validate_url(req.url)
+    if not (1 <= req.max_pages <= MAX_PAGES_LIMIT):
+        raise HTTPException(400, f"max_pages deve essere tra 1 e {MAX_PAGES_LIMIT}")
+
+    scan_id = uuid.uuid4().hex[:12]
+    manifest_path = SCANS_BASE / f"{scan_id}.json"
+    log_path = SCANS_BASE / f"{scan_id}.log"
+    cmd = [PYTHON, str(MAPPA_SITO_SCRIPT), req.url, "--out", str(manifest_path),
+           "--max", str(req.max_pages)]
+
+    with _LOCK:
+        SCANS[scan_id] = {
+            "id": scan_id, "status": "queued", "url": req.url,
+            "manifest_path": str(manifest_path), "log_path": str(log_path), "cmd": cmd,
+            "error": None, "created_at": time.time(),
+        }
+    _JOB_QUEUE.put(("scan", scan_id))
+    logger.info(f"scan {scan_id} creata: url={req.url} max_pages={req.max_pages}")
+    return {"scan_id": scan_id, "status": "running"}
+
+
+@app.post("/api/scans/{scan_id}/cancel")
+def cancel_scan(scan_id: str):
+    scan = _get_scan_or_404(scan_id)
+    with _LOCK:
+        if scan["status"] not in ("queued", "running"):
+            raise HTTPException(409, "ricognizione non interrompibile (gia' conclusa)")
+        scan["cancel_requested"] = True
+        proc = scan.get("proc")
+    if proc is not None:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    logger.info(f"scan {scan_id}: interruzione richiesta dall'utente")
+    return {"scan_id": scan_id, "status": "cancelling"}
+
+
+# righe di avanzamento reali di mappa_sito.py: "[N] url  (...)" nel fallback
+# di scoperta (un solo numero, non N/max: il totale non e' noto in anticipo,
+# a differenza del crawl vero che conosce --max come tetto fisso).
+SCAN_PROGRESS_RE = re.compile(r"^\[(\d+)\]")
+
+
+@app.get("/api/scans/{scan_id}/events")
+def scan_events(scan_id: str):
+    scan = _get_scan_or_404(scan_id)
+
+    def gen():
+        log_path = Path(scan["log_path"])
+        pos = 0
+        yield ":" + " " * 2048 + "\n\n"
+        while True:
+            with _LOCK:
+                status = SCANS[scan_id]["status"]
+            if log_path.exists():
+                with open(log_path, encoding="utf-8", errors="replace") as f:
+                    f.seek(pos)
+                    new_text = f.read()
+                    pos = f.tell()
+                for line in new_text.splitlines():
+                    data = {"log": line}
+                    m = SCAN_PROGRESS_RE.match(line)
+                    if m:
+                        data["pagina_corrente"] = int(m.group(1))
+                    yield f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+            if status == "done":
+                yield f"event: done\ndata: {json.dumps({'scan_id': scan_id})}\n\n"
+                break
+            if status == "error":
+                with _LOCK:
+                    msg = SCANS[scan_id].get("error") or "errore durante la ricognizione"
+                yield f"event: error\ndata: {json.dumps({'message': msg}, ensure_ascii=False)}\n\n"
+                break
+            if status == "cancelled":
+                yield f"event: cancelled\ndata: {json.dumps({'scan_id': scan_id})}\n\n"
+                break
+            time.sleep(0.6)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/scans/{scan_id}/manifest")
+def scan_manifest(scan_id: str):
+    scan = _get_scan_or_404(scan_id)
+    if scan["status"] != "done":
+        raise HTTPException(409, "ricognizione non ancora completata")
+    manifest_path = Path(scan["manifest_path"])
+    if not manifest_path.exists():
+        raise HTTPException(404, "manifesto assente")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))

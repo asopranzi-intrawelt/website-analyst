@@ -87,6 +87,48 @@ Nota di correzione (15/07/2026, M1): lo schema sopra e' l'esempio illustrativo o
 
 Header: `Content-Disposition: attachment; filename="{folder}.zip"`. Lo zip contiene la cartella `{folder}/` con tutti i file. Il frontend punta il link/bottone "Scarica {folder}.zip" a questo endpoint (o crea un `<a download>` verso di esso).
 
+## 5. Ricognizione (prima del download)
+
+Dal 22/09/2026 (branch `feat/selezione-perimetro`): mappa un sito senza scaricarne il
+contenuto, per lasciare scegliere il perimetro prima del crawl vero e proprio. Stessa
+famiglia di quattro endpoint di `/api/jobs`, sotto `/api/scans`, con lo stesso pattern di
+validazione/SSE/cancel; lancia `mappa_sito.py` come sottoprocesso invece di
+`scarica_sito_webcopy.py`. Condivide la stessa coda a un job alla volta dei crawl: una
+ricognizione avviata mentre un crawl e' in corso (o viceversa) resta in coda finche' non
+tocca a lei, perche' entrambi aprono un Chromium.
+
+### 5.1 Avvio ricognizione
+`POST /api/scans`
+
+Request:
+```json
+{ "url": "https://www.sito.it/", "max_pages": 60 }
+```
+`max_pages` (1..2000, stesso tetto di `/api/jobs`) limita solo le pagine rese con
+Chromium nel fallback di scoperta (per gli URL non coperti dalla sitemap), non le
+risorse gia' trovate in sitemap, che non hanno limite.
+
+Response `202`: `{ "scan_id": "a1b2c3", "status": "running" }`. Stessa validazione URL
+di `POST /api/jobs` (SSRF, schema http/https).
+
+### 5.2 Avanzamento
+`GET /api/scans/{scan_id}/events` → `text/event-stream`, stesso schema di
+`/api/jobs/{id}/events`. Le righe di avanzamento reali di `mappa_sito.py` sono `[N] url
+(...)` (un solo numero, non N/max: a differenza del crawl, il totale non e' noto in
+anticipo durante la scoperta), quindi l'evento `progress` porta `pagina_corrente` invece
+di `current_page`/`total_pages`/`percent`. Eventi `done`/`error`/`cancelled` identici.
+
+### 5.3 Manifesto
+`GET /api/scans/{scan_id}/manifest` → `200` con il JSON prodotto da `mappa_sito.py`
+(vedi il suo stesso file per la forma: `risorse` elenco piatto, `albero` gerarchico nella
+stessa forma `type`/`path`/`depth`/`children` di `/api/jobs/{id}/result`). `409` se la
+ricognizione non e' ancora completata.
+
+### 5.4 Interruzione
+`POST /api/scans/{scan_id}/cancel`, stesso comportamento di `/api/jobs/{id}/cancel`:
+funziona sia su una ricognizione in coda (non parte mai) sia su una in corso (processo
+terminato via `killpg`).
+
 ## Comportamento crawler (backend)
 - Coda dei link interni allo stesso host, dedup, rispetto di `robots.txt`.
 - `delay_sec` di attesa tra le richieste; stop a `max_pages`.
@@ -94,3 +136,5 @@ Header: `Content-Disposition: attachment; filename="{folder}.zip"`. Lo zip conti
 - `headful=true`: browser reale via Playwright sotto `xvfb` (siti anti-bot); altrimenti fetch HTTP semplice.
 - `pdf=true`: scaricare i file `.pdf` linkati nella cartella `pdf/`.
 - Pulizia job/zip vecchi (TTL) per non riempire il disco della VM.
+- Coda a un job alla volta, condivisa fra `/api/jobs` e `/api/scans` (vedi §5): un solo
+  Chromium alla volta, indipendentemente da quale delle due famiglie di endpoint lo apre.
