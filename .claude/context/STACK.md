@@ -37,6 +37,19 @@ Reinventare lo stile del frontend: il design brief impone fedelta' 1:1 ai token 
 
 `scarica_sito_webcopy.py` e' un crawler a file singolo (stdlib + Playwright/bs4/pdfminer): apre le pagine con Chromium headless, estrae testo pulito, segue i link interni, scarica i PDF collegati. Output per run: `testi/` (un .txt per risorsa), `TESTI_COMPLETI.txt`, `conteggio.csv`, mirror `www.dominio/`, opzionale `_raw_html/`. `html_leggibile/` (dal 23/07/2026) e' una copia stilizzata e navigabile di ogni pagina, non piu' testo minimale: Shadow DOM incorporato come `<template shadowrootmode="open">`, CSS esterni e `adoptedStyleSheets` incorporati, tab ARIA/Bootstrap rivelate prima della cattura, link interni riscritti in relativo con la stessa logica gia' usata per il mirror (stessa struttura a cartelle annidate, non piu' file piatti per slug).
 
+`mappa_sito.py` (dal 22/09/2026, branch `feat/selezione-perimetro`) e' lo script di
+ricognizione: mappa un sito SENZA scaricarne il contenuto, prima che parta un crawl vero
+con `scarica_sito_webcopy.py`. Fonte primaria sitemap.xml/sitemap-index (ricorsiva, con
+`<lastmod>` per URL) e una scansione HTTP leggera (mai Chromium) per i PDF collegati
+alle pagine note, che le sitemap escludono per default; rendering Chromium riservato al
+solo fallback di scoperta per URL non coperti da sitemap. Classifica ogni risorsa per
+pattern URL (pdf / esterno / archivio_tag / archivio_categoria / archivio_autore /
+archivio_paginazione / articolo / istituzionale / da_rivedere) e produce un manifesto
+JSON sia in forma piatta (`risorse`, per valutare regole di selezione) sia gerarchica
+(`albero`, stessa forma path/depth/type di `_build_tree()` nel backend, pronta per
+`buildNestedTree()` lato frontend). Riusa `same_site()` da `scarica_sito_webcopy.py` via
+import, non la duplica.
+
 `backend_esempio/app.py` e' il punto di partenza per un endpoint `POST /api/jobs` che avvia il crawler come sottoprocesso, traccia i job (id/stato/log/cartella output) ed espone `GET /api/jobs/{id}/events` (SSE), `GET /api/jobs/{id}/result` e `GET /api/jobs/{id}/download` secondo `API_CONTRACT.md`.
 
 `frontend_esempio/index.html` e' il form + polling/SSE dei tre stati (form -> loading con log in tempo reale -> riepilogo con albero file e download zip), da rifinire secondo il prototipo in `frontend_esempio/design/`.

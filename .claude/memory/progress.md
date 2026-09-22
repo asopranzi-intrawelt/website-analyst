@@ -1,5 +1,66 @@
 # Work-log
 
+## 2026-09-22 — Stage 1 (branch feat/selezione-perimetro): script di ricognizione mappa_sito.py
+
+Primo stage della fase di selezione del perimetro prima del download (vedi piano
+approvato, motivata dall'incidente reale: un crawl completo di bergamofiera.it aveva
+prodotto 1513 risorse/4GB di cui solo l'8% serviva, scartate a mano a valle con rischio
+di disallineamento fra gli output). Nuovo script `mappa_sito.py`, adattato da
+`copia-navigabile-sito/explorer_sito.py` (non integrato, gia' nel repository), che mappa
+un sito SENZA scaricarne il contenuto: sitemap.xml/sitemap-index (ricorsiva, con
+`<lastmod>` per URL, non estratto dall'originale) come fonte primaria, rendering
+Chromium riservato al solo fallback di scoperta (URL non coperti da sitemap), classifica
+ogni risorsa per pattern URL (pdf / esterno / archivio_tag / archivio_categoria /
+archivio_autore / archivio_paginazione / articolo / istituzionale / da_rivedere).
+`same_site()` riusata da `scarica_sito_webcopy.py` via import, non duplicata.
+
+Tre problemi reali emersi testando su bergamofiera.it (non ipotetici, tutti verificati e
+corretti prima di considerare lo stage concluso):
+
+1. La sitemap nativa di WordPress (verificato: questo sito usa `wp-sitemap.xml`, elencato
+   in robots.txt) esclude per default gli allegati: il primo giro dava solo 1 PDF trovato
+   contro gli 83 del crawl completo. Aggiunta `scan_pdf_links()`: una scansione HTTP
+   leggera (nessun rendering Chromium) dell'HTML grezzo di ogni pagina gia' nota dalla
+   sitemap, alla ricerca di `href=".*\.pdf"` - molto piu' economica di un rendering per
+   pagina, restando fedele alla decisione "sitemap prima, Chromium solo se serve".
+2. La maggior parte dei PDF reali vive su un sottodominio diverso
+   (`file.bergamofiera.it`, non `www.bergamofiera.it`) - un pattern di hosting allegati
+   comune. Verificato che il crawler vero (`save_pdf()` in `scarica_sito_webcopy.py`)
+   scarica i PDF con estensione esplicita indipendentemente dal dominio, bypassando
+   `same_site()`: `classify()` corretta per controllare l'estensione `.pdf` PRIMA
+   dell'appartenenza al sito, cosi' il manifesto rispecchia il comportamento reale del
+   crawler invece di nascondere questi PDF dietro "esterno". Risultato dopo le due
+   correzioni: 121 PDF trovati (piu' degli 83 del crawl originale, che si era fermato
+   prima per il vecchio tetto di pagine).
+3. Un PDF con un "&" nel nome file (codificato in HTML come `&amp;`) veniva troncato da
+   `urlparse()`: il punto e virgola di `&amp;` viene interpretato come separatore dei
+   parametri di percorso legacy (una specificita' poco nota di `urlparse()`, non presente
+   in `urlsplit()`), tagliando l'URL prima dell'estensione `.pdf` e facendolo classificare
+   erroneamente come pagina esterna generica. Corretto con `html.unescape()` sugli href
+   estratti via regex (necessario solo per la scansione leggera: il fallback Chromium usa
+   `getAttribute('href')` del DOM, gia' decodificato dal browser, non affetto). Non
+   toccato `scarica_sito_webcopy.py`: la sua scoperta link passa sempre dal DOM, non da
+   regex su HTML grezzo, quindi non e' esposto alla stessa classe di problema.
+
+Aggiunta anche `build_albero()`, non prevista nella prima stesura di questo stage ma gia'
+promessa nel piano approvato ("stessa forma piatta path/depth/type di `_build_tree()`"):
+trasforma l'elenco piatto di risorse in una struttura gerarchica pronta per essere
+disegnata dal `buildNestedTree()` gia' scritto lato frontend, senza modifiche. A
+differenza di `_build_tree()` (che cammina un filesystem reale, dove un percorso e' o
+cartella o file mai entrambi), qui un segmento di URL puo' essere insieme una risorsa
+vera (es. l'archivio `/2016/`) e un genitore di altre risorse (es. `/2016/04/...`):
+esattamente il caso che il tentativo esterno all'origine dell'incidente non sapeva
+rappresentare. Verificato sia su un caso sintetico sia sui dati reali di
+bergamofiera.it (4 pagine che sono davvero sia risorsa sia genitore sullo stesso sito).
+
+Verifica finale: 1411 risorse totali, conteggio per tipo coerente con quanto gia'
+osservato a mano in sessioni precedenti sullo stesso sito (674 articoli, 219
+archivio_tag, 16 archivio_categoria, 2 archivio_autore, 80 esterno, 121 pdf, 293
+istituzionale, 6 da_rivedere - fra cui, verificato, le pagine di link rotto gia' note
+dall'incidente originale, ora correttamente escluse di default invece che incluse per
+errore). Tempo di esecuzione dell'ordine dei minuti contro le ~5 ore del crawl completo
+originale sullo stesso sito.
+
 ## 2026-09-10 — Tetto max_pages alzato ulteriormente da 1000 a 2000
 
 Stessa richiesta della sessione precedente, portata oltre: 1000 non bastava ancora per i
