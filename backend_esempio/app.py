@@ -81,6 +81,17 @@ async def _http_exc_handler(request: Request, exc: HTTPException):
     return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
 
 
+class SelectionRule(BaseModel):
+    """Regole di selezione valutate contro il manifesto di una ricognizione
+    (vedi mappa_sito.py), non un elenco letterale di URL: restano valide
+    anche se il sito cambia tra una ricognizione e il crawl vero e proprio."""
+    scan_id: str
+    tipi_inclusi: list[str]
+    data_da: str | None = None   # YYYY-MM-DD, applicato solo alle risorse tipo 'articolo'
+    data_a: str | None = None
+    esclusioni: list[str] = []   # URL esclusi puntualmente anche se il tipo sarebbe incluso
+
+
 class CrawlRequest(BaseModel):
     url: str
     folder: str = "output"
@@ -88,6 +99,7 @@ class CrawlRequest(BaseModel):
     delay_sec: float | str = 1.0
     pdf: bool = True
     headful: bool = False
+    selection: SelectionRule | None = None
 
     @field_validator("delay_sec", mode="before")
     @classmethod
@@ -121,6 +133,44 @@ def _validate_url(url: str) -> None:
 def _sanitize_folder(folder: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_-]", "", folder)
     return cleaned or "output"
+
+
+def _resolve_selection(rule: SelectionRule) -> tuple[list[str], list[str]]:
+    """Valuta le regole di selezione contro il manifesto di una ricognizione
+    gia' completata, restituendo (pagine, pdf): due elenchi di URL distinti,
+    perche' scarica_sito_webcopy.py li tratta in due modi diversi (pagine da
+    aprire col browser via --urls-file, PDF da scaricare via
+    --pdf-urls-file, vedi la sua stessa documentazione del perche')."""
+    with _LOCK:
+        scan = SCANS.get(rule.scan_id)
+    if not scan:
+        raise HTTPException(400, "ricognizione indicata nella selezione non trovata")
+    if scan["status"] != "done":
+        raise HTTPException(409, "la ricognizione indicata nella selezione non e' ancora completata")
+    manifest_path = Path(scan["manifest_path"])
+    if not manifest_path.exists():
+        raise HTTPException(404, "manifesto della ricognizione assente")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(500, f"manifesto della ricognizione illeggibile: {e}")
+
+    tipi = set(rule.tipi_inclusi)
+    esclusi = set(rule.esclusioni)
+    pagine, pdf = [], []
+    for r in manifest.get("risorse", []):
+        if r["url"] in esclusi or r["tipo"] not in tipi:
+            continue
+        if r["tipo"] == "articolo" and (rule.data_da or rule.data_a):
+            data = r.get("data")
+            if not data:
+                continue  # niente data nota: non si puo' verificare l'intervallo, si esclude
+            if rule.data_da and data < rule.data_da:
+                continue
+            if rule.data_a and data > rule.data_a:
+                continue
+        (pdf if r["tipo"] == "pdf" else pagine).append(r["url"])
+    return pagine, pdf
 
 
 def _unique_folder(base: str) -> str:
@@ -320,8 +370,6 @@ def index():
 @app.post("/api/jobs", status_code=202)
 def create_job(req: CrawlRequest):
     _validate_url(req.url)
-    if not (1 <= req.max_pages <= MAX_PAGES_LIMIT):
-        raise HTTPException(400, f"max_pages deve essere tra 1 e {MAX_PAGES_LIMIT}")
     if req.delay_sec < 0:
         raise HTTPException(400, "delay_sec non valido")
 
@@ -330,10 +378,43 @@ def create_job(req: CrawlRequest):
     out_dir = OUTPUT_BASE / folder
     log_path = OUTPUT_BASE / f"{folder}.log"
 
-    cmd = [PYTHON, str(SCRIPT), req.url, "--out", str(out_dir),
-           "--max", str(req.max_pages), "--delay", str(req.delay_sec)]
-    if not req.pdf:
-        cmd.append("--no-pdf")
+    if req.selection is not None:
+        # crawl vincolato: la selezione (valutata contro un manifesto di
+        # ricognizione) determina ESATTAMENTE le pagine e i PDF da scaricare,
+        # non un tetto massimo su una scoperta aperta. --no-pdf e' sempre
+        # passato anche quando la selezione include PDF: senza, la scoperta
+        # automatica dei link PDF su OGNI pagina visitata (indipendente da
+        # --no-follow, vedi commento in scarica_sito_webcopy.py) potrebbe
+        # scaricare un PDF collegato ma non selezionato, rompendo la
+        # garanzia che l'output rifletta esattamente e solo la selezione;
+        # i PDF selezionati arrivano solo via --pdf-urls-file.
+        pagine, pdf_urls = _resolve_selection(req.selection)
+        if not pagine and not pdf_urls:
+            raise HTTPException(400, "la selezione non include alcuna risorsa")
+        if len(pagine) > MAX_PAGES_LIMIT:
+            raise HTTPException(400, f"la selezione include piu' di {MAX_PAGES_LIMIT} pagine")
+
+        cmd = [PYTHON, str(SCRIPT), "--out", str(out_dir),
+               "--max", str(max(len(pagine), 1)), "--delay", str(req.delay_sec),
+               "--no-follow", "--no-pdf"]
+        if pagine:
+            pagine_file = OUTPUT_BASE / f"{folder}.selezione-pagine.txt"
+            pagine_file.write_text("\n".join(pagine) + "\n", encoding="utf-8")
+            cmd += ["--urls-file", str(pagine_file)]
+        if pdf_urls:
+            pdf_file = OUTPUT_BASE / f"{folder}.selezione-pdf.txt"
+            pdf_file.write_text("\n".join(pdf_urls) + "\n", encoding="utf-8")
+            cmd += ["--pdf-urls-file", str(pdf_file)]
+        n_risorse_log = f"selezione: {len(pagine)} pagine + {len(pdf_urls)} PDF (scan {req.selection.scan_id})"
+    else:
+        if not (1 <= req.max_pages <= MAX_PAGES_LIMIT):
+            raise HTTPException(400, f"max_pages deve essere tra 1 e {MAX_PAGES_LIMIT}")
+        cmd = [PYTHON, str(SCRIPT), req.url, "--out", str(out_dir),
+               "--max", str(req.max_pages), "--delay", str(req.delay_sec)]
+        if not req.pdf:
+            cmd.append("--no-pdf")
+        n_risorse_log = f"max_pages={req.max_pages}"
+
     if req.headful:
         cmd.append("--headful")
         cmd = ["xvfb-run", "-a", *cmd]  # sito anti-bot su VM headless (CLAUDE.md 3.4)
@@ -347,7 +428,7 @@ def create_job(req: CrawlRequest):
         }
     _JOB_QUEUE.put(("job", job_id))
     logger.info(f"job {job_id} creato: url={req.url} folder={folder} "
-                f"max_pages={req.max_pages} delay_sec={req.delay_sec} headful={req.headful}")
+                f"{n_risorse_log} delay_sec={req.delay_sec} headful={req.headful}")
     return {"job_id": job_id, "status": "running"}
 
 

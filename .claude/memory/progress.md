@@ -1,132 +1,51 @@
 # Work-log
 
+## 2026-09-22 — Stage 3 (branch feat/selezione-perimetro): crawl vincolato a una selezione
+
+Terzo stage del piano approvato. `scarica_sito_webcopy.py` guadagna `--pdf-urls-file` (parametro `extra_pdf_urls` su `run()`): un canale separato da `--urls-file` per i PDF, necessario perche' un URL iniziale passa sempre da `page.goto()` (pagina da aprire), mai da `save_pdf()` (invocata oggi solo sui link scoperti dentro una pagina gia' visitata) - senza questo canale un PDF selezionato nell'albero non avrebbe mai potuto entrare in un crawl vincolato a `--urls-file --no-follow`. Verificato con una fixture locale isolata (server HTTP su `/tmp`, una pagina selezionata SENZA link diretto al PDF, cosi' da escludere che il download derivasse dalla scoperta automatica pre-esistente invece che dal nuovo meccanismo): il PDF selezionato e' stato scaricato, la pagina collegata ma non selezionata mai.
+
+`backend_esempio/app.py`: `POST /api/jobs` guadagna il campo opzionale `selection` (modello `SelectionRule`: `scan_id`, `tipi_inclusi`, `data_da`/`data_a`, `esclusioni`). `_resolve_selection()` valuta le regole contro il manifesto di una ricognizione gia' completata (`409`/`404` propagati come `400` se non trovata o non ancora pronta) e restituisce due elenchi di URL (pagine, PDF) - una regola, non un elenco letterale, scelta deliberata gia' presa in fase di piano perche' resta valida anche se il sito cambia tra ricognizione e crawl. `create_job()` si dirama: con `selection` scrive due file temporanei (`{folder}.selezione-pagine.txt`, `{folder}.selezione-pdf.txt`) e lancia il crawler con `--urls-file`/`--pdf-urls-file --no-follow --no-pdf`, ignorando `max_pages`/`pdf` della request; senza `selection` il comportamento resta identico a prima (nessuna rottura di compatibilita', verificata esplicitamente nel test).
+
+Scoperta rilevante durante l'implementazione, non nel piano originale: `--no-pdf` deve essere SEMPRE passato in modalita' selezione, anche quando la selezione include PDF, perche' la scoperta automatica dei link PDF su ogni pagina resa (grep-verificata: due controlli `if grab_pdf: save_pdf(...)`, nessuno dei due condizionato da `follow_links`) scaricherebbe comunque un PDF collegato ma non selezionato. Con `--no-pdf` quella via automatica e' spenta e l'unico canale di ingresso PDF resta `--pdf-urls-file`, esplicito e vincolato alla selezione.
+
+Verificato end-to-end con un finto crawler (`test_stage3.py`, backend con `TestClient` + `fake_crawler.py`/`fake_mappa_sito.py` gia' usati per lo Stage 2, estesi per capire `--urls-file`/`--pdf-urls-file`/`--no-follow` e produrre output reale coerente con gli URL ricevuti): manifesto a 5 risorse (istituzionale, due articolo con date diverse, archivio_tag, pdf), selezione che include istituzionale+articolo+pdf con `data_da=2018-01-01` esclude correttamente l'articolo del 2016, `conteggio.csv` e lo zip scaricato contengono esattamente e solo le 4 risorse attese, l'archivio_tag escluso non compare in nessun output. Selezione vuota e `scan_id` inesistente restituiscono `400`. Rieseguito anche `test_stage2.py` per non-regressione dopo l'estensione delle fixture condivise: tutti i controlli ancora superati.
+
+`API_CONTRACT.md` §1 esteso con la request di crawl vincolato e la semantica completa del campo `selection`; `STACK.md` aggiornato per `scarica_sito_webcopy.py` (nuovo flag) e `backend_esempio/app.py` (nuovo campo e diramazione in `create_job()`).
+
 ## 2026-09-22 — Stage 2 (branch feat/selezione-perimetro): endpoint backend di ricognizione
 
-Secondo stage del piano approvato. Nuova famiglia di endpoint in `backend_esempio/app.py`,
-sullo stesso pattern gia' collaudato per `/api/jobs`: `POST /api/scans` (lancia
-`mappa_sito.py` come sottoprocesso), `GET /api/scans/{id}/events` (SSE, stesso tailing
-incrementale del log, pattern di avanzamento adattato a `[N]` invece di `[N/max]` dato
-che il totale non e' noto in anticipo durante la scoperta), `GET
-/api/scans/{id}/manifest` (il JSON classificato, `409` se non ancora completata), `POST
-/api/scans/{id}/cancel` (stesso meccanismo Popen+killpg gia' esistente).
+Secondo stage del piano approvato. Nuova famiglia di endpoint in `backend_esempio/app.py`, sullo stesso pattern gia' collaudato per `/api/jobs`: `POST /api/scans` (lancia `mappa_sito.py` come sottoprocesso), `GET /api/scans/{id}/events` (SSE, stesso tailing incrementale del log, pattern di avanzamento adattato a `[N]` invece di `[N/max]` dato che il totale non e' noto in anticipo durante la scoperta), `GET /api/scans/{id}/manifest` (il JSON classificato, `409` se non ancora completata), `POST /api/scans/{id}/cancel` (stesso meccanismo Popen+killpg gia' esistente).
 
-Decisione strutturale: `SCANS` resta un dizionario separato da `JOBS` (le due famiglie
-producono risultati di forma diversa: un archivio scaricato contro un singolo file
-manifesto), ma condividono la STESSA `_JOB_QUEUE` e lo stesso worker thread - ogni
-elemento in coda e' ora taggato `("job"|"scan", id)`, `_worker_loop` smista in base al
-tag. Necessario perche' sia un crawl sia una ricognizione aprono un Chromium: "un solo
-Chromium alla volta" vale fra le due famiglie di job, non solo fra due crawl. I manifesti
-vivono in `OUTPUT_BASE/_scans/` (non nella cartella di un job di crawl, non archiviati
-sulla share: sono dati di lavoro effimeri, non un deliverable). Nessuna pulizia TTL per
-le ricognizioni in questo stage, decisione deliberata: la loro dimensione e' trascurabile
-e lo Stage 3 deve ancora definire come un manifesto viene referenziato da un crawl
-vincolato, prematuro decidere una politica di scadenza prima di allora.
+Decisione strutturale: `SCANS` resta un dizionario separato da `JOBS` (le due famiglie producono risultati di forma diversa: un archivio scaricato contro un singolo file manifesto), ma condividono la STESSA `_JOB_QUEUE` e lo stesso worker thread - ogni elemento in coda e' ora taggato `("job"|"scan", id)`, `_worker_loop` smista in base al tag. Necessario perche' sia un crawl sia una ricognizione aprono un Chromium: "un solo Chromium alla volta" vale fra le due famiglie di job, non solo fra due crawl. I manifesti vivono in `OUTPUT_BASE/_scans/` (non nella cartella di un job di crawl, non archiviati sulla share: sono dati di lavoro effimeri, non un deliverable). Nessuna pulizia TTL per le ricognizioni in questo stage, decisione deliberata: la loro dimensione e' trascurabile e lo Stage 3 deve ancora definire come un manifesto viene referenziato da un crawl vincolato, prematuro decidere una politica di scadenza prima di allora.
 
-Verificato con un test dedicato (`test_stage2.py`, un finto `mappa_sito.py` per
-rapidita'): ciclo di vita completo di una ricognizione (avvio, SSE con `pagina_corrente`,
-manifesto, `409` prima del completamento), ricognizione fallita, interruzione di una
-ricognizione in coda. Verificata esplicitamente la non-regressione sui job di crawl
-esistenti dopo il cambio della coda (stesso identico comportamento di prima). Verificato
-in modo esplicito il punto piu' delicato - la coda condivisa - avviando un crawl e poi
-una ricognizione mentre il primo era ancora "running": la ricognizione e' rimasta
-"queued" fino al completamento del crawl, confermato dai timestamp del log applicativo.
+Verificato con un test dedicato (`test_stage2.py`, un finto `mappa_sito.py` per rapidita'): ciclo di vita completo di una ricognizione (avvio, SSE con `pagina_corrente`, manifesto, `409` prima del completamento), ricognizione fallita, interruzione di una ricognizione in coda. Verificata esplicitamente la non-regressione sui job di crawl esistenti dopo il cambio della coda (stesso identico comportamento di prima). Verificato in modo esplicito il punto piu' delicato - la coda condivisa - avviando un crawl e poi una ricognizione mentre il primo era ancora "running": la ricognizione e' rimasta "queued" fino al completamento del crawl, confermato dai timestamp del log applicativo.
 
 ## 2026-09-22 — Stage 1 (branch feat/selezione-perimetro): script di ricognizione mappa_sito.py
 
-Primo stage della fase di selezione del perimetro prima del download (vedi piano
-approvato, motivata dall'incidente reale: un crawl completo di bergamofiera.it aveva
-prodotto 1513 risorse/4GB di cui solo l'8% serviva, scartate a mano a valle con rischio
-di disallineamento fra gli output). Nuovo script `mappa_sito.py`, adattato da
-`copia-navigabile-sito/explorer_sito.py` (non integrato, gia' nel repository), che mappa
-un sito SENZA scaricarne il contenuto: sitemap.xml/sitemap-index (ricorsiva, con
-`<lastmod>` per URL, non estratto dall'originale) come fonte primaria, rendering
-Chromium riservato al solo fallback di scoperta (URL non coperti da sitemap), classifica
-ogni risorsa per pattern URL (pdf / esterno / archivio_tag / archivio_categoria /
-archivio_autore / archivio_paginazione / articolo / istituzionale / da_rivedere).
-`same_site()` riusata da `scarica_sito_webcopy.py` via import, non duplicata.
+Primo stage della fase di selezione del perimetro prima del download (vedi piano approvato, motivata dall'incidente reale: un crawl completo di bergamofiera.it aveva prodotto 1513 risorse/4GB di cui solo l'8% serviva, scartate a mano a valle con rischio di disallineamento fra gli output). Nuovo script `mappa_sito.py`, adattato da `copia-navigabile-sito/explorer_sito.py` (non integrato, gia' nel repository), che mappa un sito SENZA scaricarne il contenuto: sitemap.xml/sitemap-index (ricorsiva, con `<lastmod>` per URL, non estratto dall'originale) come fonte primaria, rendering Chromium riservato al solo fallback di scoperta (URL non coperti da sitemap), classifica ogni risorsa per pattern URL (pdf / esterno / archivio_tag / archivio_categoria / archivio_autore / archivio_paginazione / articolo / istituzionale / da_rivedere). `same_site()` riusata da `scarica_sito_webcopy.py` via import, non duplicata.
 
-Tre problemi reali emersi testando su bergamofiera.it (non ipotetici, tutti verificati e
-corretti prima di considerare lo stage concluso):
+Tre problemi reali emersi testando su bergamofiera.it (non ipotetici, tutti verificati e corretti prima di considerare lo stage concluso):
 
-1. La sitemap nativa di WordPress (verificato: questo sito usa `wp-sitemap.xml`, elencato
-   in robots.txt) esclude per default gli allegati: il primo giro dava solo 1 PDF trovato
-   contro gli 83 del crawl completo. Aggiunta `scan_pdf_links()`: una scansione HTTP
-   leggera (nessun rendering Chromium) dell'HTML grezzo di ogni pagina gia' nota dalla
-   sitemap, alla ricerca di `href=".*\.pdf"` - molto piu' economica di un rendering per
-   pagina, restando fedele alla decisione "sitemap prima, Chromium solo se serve".
-2. La maggior parte dei PDF reali vive su un sottodominio diverso
-   (`file.bergamofiera.it`, non `www.bergamofiera.it`) - un pattern di hosting allegati
-   comune. Verificato che il crawler vero (`save_pdf()` in `scarica_sito_webcopy.py`)
-   scarica i PDF con estensione esplicita indipendentemente dal dominio, bypassando
-   `same_site()`: `classify()` corretta per controllare l'estensione `.pdf` PRIMA
-   dell'appartenenza al sito, cosi' il manifesto rispecchia il comportamento reale del
-   crawler invece di nascondere questi PDF dietro "esterno". Risultato dopo le due
-   correzioni: 121 PDF trovati (piu' degli 83 del crawl originale, che si era fermato
-   prima per il vecchio tetto di pagine).
-3. Un PDF con un "&" nel nome file (codificato in HTML come `&amp;`) veniva troncato da
-   `urlparse()`: il punto e virgola di `&amp;` viene interpretato come separatore dei
-   parametri di percorso legacy (una specificita' poco nota di `urlparse()`, non presente
-   in `urlsplit()`), tagliando l'URL prima dell'estensione `.pdf` e facendolo classificare
-   erroneamente come pagina esterna generica. Corretto con `html.unescape()` sugli href
-   estratti via regex (necessario solo per la scansione leggera: il fallback Chromium usa
-   `getAttribute('href')` del DOM, gia' decodificato dal browser, non affetto). Non
-   toccato `scarica_sito_webcopy.py`: la sua scoperta link passa sempre dal DOM, non da
-   regex su HTML grezzo, quindi non e' esposto alla stessa classe di problema.
+1. La sitemap nativa di WordPress (verificato: questo sito usa `wp-sitemap.xml`, elencato in robots.txt) esclude per default gli allegati: il primo giro dava solo 1 PDF trovato contro gli 83 del crawl completo. Aggiunta `scan_pdf_links()`: una scansione HTTP leggera (nessun rendering Chromium) dell'HTML grezzo di ogni pagina gia' nota dalla sitemap, alla ricerca di `href=".*\.pdf"` - molto piu' economica di un rendering per pagina, restando fedele alla decisione "sitemap prima, Chromium solo se serve".
+2. La maggior parte dei PDF reali vive su un sottodominio diverso (`file.bergamofiera.it`, non `www.bergamofiera.it`) - un pattern di hosting allegati comune. Verificato che il crawler vero (`save_pdf()` in `scarica_sito_webcopy.py`) scarica i PDF con estensione esplicita indipendentemente dal dominio, bypassando `same_site()`: `classify()` corretta per controllare l'estensione `.pdf` PRIMA dell'appartenenza al sito, cosi' il manifesto rispecchia il comportamento reale del crawler invece di nascondere questi PDF dietro "esterno". Risultato dopo le due correzioni: 121 PDF trovati (piu' degli 83 del crawl originale, che si era fermato prima per il vecchio tetto di pagine).
+3. Un PDF con un "&" nel nome file (codificato in HTML come `&amp;`) veniva troncato da `urlparse()`: il punto e virgola di `&amp;` viene interpretato come separatore dei parametri di percorso legacy (una specificita' poco nota di `urlparse()`, non presente in `urlsplit()`), tagliando l'URL prima dell'estensione `.pdf` e facendolo classificare erroneamente come pagina esterna generica. Corretto con `html.unescape()` sugli href estratti via regex (necessario solo per la scansione leggera: il fallback Chromium usa `getAttribute('href')` del DOM, gia' decodificato dal browser, non affetto). Non toccato `scarica_sito_webcopy.py`: la sua scoperta link passa sempre dal DOM, non da regex su HTML grezzo, quindi non e' esposto alla stessa classe di problema.
 
-Aggiunta anche `build_albero()`, non prevista nella prima stesura di questo stage ma gia'
-promessa nel piano approvato ("stessa forma piatta path/depth/type di `_build_tree()`"):
-trasforma l'elenco piatto di risorse in una struttura gerarchica pronta per essere
-disegnata dal `buildNestedTree()` gia' scritto lato frontend, senza modifiche. A
-differenza di `_build_tree()` (che cammina un filesystem reale, dove un percorso e' o
-cartella o file mai entrambi), qui un segmento di URL puo' essere insieme una risorsa
-vera (es. l'archivio `/2016/`) e un genitore di altre risorse (es. `/2016/04/...`):
-esattamente il caso che il tentativo esterno all'origine dell'incidente non sapeva
-rappresentare. Verificato sia su un caso sintetico sia sui dati reali di
-bergamofiera.it (4 pagine che sono davvero sia risorsa sia genitore sullo stesso sito).
+Aggiunta anche `build_albero()`, non prevista nella prima stesura di questo stage ma gia' promessa nel piano approvato ("stessa forma piatta path/depth/type di `_build_tree()`"): trasforma l'elenco piatto di risorse in una struttura gerarchica pronta per essere disegnata dal `buildNestedTree()` gia' scritto lato frontend, senza modifiche. A differenza di `_build_tree()` (che cammina un filesystem reale, dove un percorso e' o cartella o file mai entrambi), qui un segmento di URL puo' essere insieme una risorsa vera (es. l'archivio `/2016/`) e un genitore di altre risorse (es. `/2016/04/...`): esattamente il caso che il tentativo esterno all'origine dell'incidente non sapeva rappresentare. Verificato sia su un caso sintetico sia sui dati reali di bergamofiera.it (4 pagine che sono davvero sia risorsa sia genitore sullo stesso sito).
 
-Verifica finale: 1411 risorse totali, conteggio per tipo coerente con quanto gia'
-osservato a mano in sessioni precedenti sullo stesso sito (674 articoli, 219
-archivio_tag, 16 archivio_categoria, 2 archivio_autore, 80 esterno, 121 pdf, 293
-istituzionale, 6 da_rivedere - fra cui, verificato, le pagine di link rotto gia' note
-dall'incidente originale, ora correttamente escluse di default invece che incluse per
-errore). Tempo di esecuzione dell'ordine dei minuti contro le ~5 ore del crawl completo
-originale sullo stesso sito.
+Verifica finale: 1411 risorse totali, conteggio per tipo coerente con quanto gia' osservato a mano in sessioni precedenti sullo stesso sito (674 articoli, 219 archivio_tag, 16 archivio_categoria, 2 archivio_autore, 80 esterno, 121 pdf, 293 istituzionale, 6 da_rivedere - fra cui, verificato, le pagine di link rotto gia' note dall'incidente originale, ora correttamente escluse di default invece che incluse per errore). Tempo di esecuzione dell'ordine dei minuti contro le ~5 ore del crawl completo originale sullo stesso sito.
 
 ## 2026-09-10 — Tetto max_pages alzato ulteriormente da 1000 a 2000
 
-Stessa richiesta della sessione precedente, portata oltre: 1000 non bastava ancora per i
-siti piu' grandi. Stessi tre punti toccati (`MAX_PAGES_LIMIT` in `backend_esempio/app.py`,
-attributo `max` dell'input nel form, riferimenti 1..N in `API_CONTRACT.md`/`dev-testing.md`/
-`design-and-security.md`); default del form invariato a 300.
+Stessa richiesta della sessione precedente, portata oltre: 1000 non bastava ancora per i siti piu' grandi. Stessi tre punti toccati (`MAX_PAGES_LIMIT` in `backend_esempio/app.py`, attributo `max` dell'input nel form, riferimenti 1..N in `API_CONTRACT.md`/`dev-testing.md`/ `design-and-security.md`); default del form invariato a 300.
 
-Durante il riavvio del servizio emerso un problema operativo degno di nota: il primo
-tentativo di `sudo systemctl restart estrattore` non ha avuto effetto (il processo e'
-rimasto lo stesso PID, avviato prima della modifica del codice), individuato confrontando
-`systemctl show estrattore -p ExecMainStartTimestamp` con la data di modifica del file —
-tecnica di verifica utile da riusare ogni volta che un riavvio sembra non aver avuto
-effetto. Al secondo tentativo il riavvio e' andato a buon fine (nuovo PID, timestamp
-successivo alla modifica). Verificato con un job reale (`max_pages=2000` accettato e
-completato con successo, `2001` rifiutato) contro il servizio di produzione.
+Durante il riavvio del servizio emerso un problema operativo degno di nota: il primo tentativo di `sudo systemctl restart estrattore` non ha avuto effetto (il processo e' rimasto lo stesso PID, avviato prima della modifica del codice), individuato confrontando `systemctl show estrattore -p ExecMainStartTimestamp` con la data di modifica del file — tecnica di verifica utile da riusare ogni volta che un riavvio sembra non aver avuto effetto. Al secondo tentativo il riavvio e' andato a buon fine (nuovo PID, timestamp successivo alla modifica). Verificato con un job reale (`max_pages=2000` accettato e completato con successo, `2001` rifiutato) contro il servizio di produzione.
 
 ## 2026-09-09 — Tetto max_pages alzato da 300 a 1000
 
-Richiesta dell'utente: 300 pagine non bastavano per i siti particolarmente grandi. Alzato
-il tetto massimo a 1000 in `backend_esempio/app.py` (`MAX_PAGES_LIMIT`, unico punto reale
-di enforcement: lo script CLI `scarica_sito_webcopy.py` non ha mai avuto un tetto proprio,
-usa direttamente `args.max`). Il valore precompilato di default resta 300 (scelta esplicita
-dell'utente): sia il campo del form (`value="300"`, solo l'attributo `max` HTML alzato a
-1000) sia il default del modello `CrawlRequest` restano invariati, cosi' un crawl su un
-sito piccolo non tenta per default fino a 1000 pagine. Aggiornati i riferimenti al vecchio
-tetto 1..300 in `API_CONTRACT.md`, `dev-testing.md`, `design-and-security.md`; non toccati
-`README.md`/`guida/Guida_estrazione_testi_sito.md`, che descrivono solo il default di
-`--max` da CLI (300, invariato, nessun tetto lato script).
+Richiesta dell'utente: 300 pagine non bastavano per i siti particolarmente grandi. Alzato il tetto massimo a 1000 in `backend_esempio/app.py` (`MAX_PAGES_LIMIT`, unico punto reale di enforcement: lo script CLI `scarica_sito_webcopy.py` non ha mai avuto un tetto proprio, usa direttamente `args.max`). Il valore precompilato di default resta 300 (scelta esplicita dell'utente): sia il campo del form (`value="300"`, solo l'attributo `max` HTML alzato a
+1000) sia il default del modello `CrawlRequest` restano invariati, cosi' un crawl su un sito piccolo non tenta per default fino a 1000 pagine. Aggiornati i riferimenti al vecchio tetto 1..300 in `API_CONTRACT.md`, `dev-testing.md`, `design-and-security.md`; non toccati `README.md`/`guida/Guida_estrazione_testi_sito.md`, che descrivono solo il default di `--max` da CLI (300, invariato, nessun tetto lato script).
 
-Verificato con `TestClient` (1001 rifiutato, 1000/500/300 accettati, 0 rifiutato) e poi sul
-servizio di produzione reale dopo `sudo systemctl restart estrattore` (il processo aveva
-gia' in memoria il vecchio limite): job con `max_pages=1000` accettato e completato con
-successo su `example.com`. Durante la verifica in locale un job di test e' rimasto
-orfano (lo script di verifica e' terminato prima che il crawl finisse): individuato e
-terminato a mano, nessun residuo.
+Verificato con `TestClient` (1001 rifiutato, 1000/500/300 accettati, 0 rifiutato) e poi sul servizio di produzione reale dopo `sudo systemctl restart estrattore` (il processo aveva gia' in memoria il vecchio limite): job con `max_pages=1000` accettato e completato con successo su `example.com`. Durante la verifica in locale un job di test e' rimasto orfano (lo script di verifica e' terminato prima che il crawl finisse): individuato e terminato a mano, nessun residuo.
 
 ## 2026-07-23 — M3: servizio di produzione + hostname mDNS
 

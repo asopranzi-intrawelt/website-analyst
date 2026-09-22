@@ -402,8 +402,16 @@ def slug_txt(url: str) -> str:
 # Crawl + salvataggio stile WebCopy
 # ------------------------------------------------------------------------
 def run(start_urls, out_dir, max_pages, delay, include_sub,
-        follow_links=True, grab_pdf=True, dump_html=False):
-    root_netloc = urlparse(start_urls[0]).netloc
+        follow_links=True, grab_pdf=True, dump_html=False, extra_pdf_urls=None):
+    extra_pdf_urls = extra_pdf_urls or []
+    if start_urls:
+        root_netloc = urlparse(start_urls[0]).netloc
+    elif extra_pdf_urls:
+        # crawl vincolato a una selezione fatta di soli PDF, nessuna pagina:
+        # il dominio del mirror si ricava dal primo PDF invece che da start_urls[0].
+        root_netloc = urlparse(extra_pdf_urls[0]).netloc
+    else:
+        raise ValueError("run() richiede almeno un URL di pagina o un PDF esplicito (extra_pdf_urls)")
     site_root = os.path.join(out_dir, root_netloc)
     dir_testi = os.path.join(out_dir, "testi")
     dir_leggibile = os.path.join(out_dir, "html_leggibile")
@@ -512,6 +520,17 @@ def run(start_urls, out_dir, max_pages, delay, include_sub,
                          "file": os.path.relpath(ptxt_path, out_dir)})
             all_text_parts.append(f"\n\n{'#'*70}\n# [PDF] {absu}\n{'#'*70}\n{ptxt}")
             print(f"    [PDF] {absu}  ({pwords} parole)")
+
+        # PDF esplicitamente selezionati (--pdf-urls-file): a differenza dei
+        # PDF scoperti seguendo i link di una pagina, questi vanno scaricati
+        # sempre, anche in --no-follow, perche' save_pdf() non viene mai
+        # invocata su un URL iniziale (solo sui link trovati DENTRO una
+        # pagina) - senza questo canale separato, un PDF non potrebbe mai
+        # far parte di una selezione vincolata come --urls-file, che tratta
+        # ogni voce come una pagina da aprire con page.goto(), non come un
+        # file da scaricare via save_pdf().
+        for absu in extra_pdf_urls:
+            save_pdf(absu)
 
         first_page_diag = True
         while queue and pages_done < max_pages:
@@ -876,6 +895,11 @@ def main():
     ap.add_argument("--include-subdomains", action="store_true", help="segui anche i sottodomini")
     ap.add_argument("--urls-file", help="file di testo con un URL per riga da aggiungere alla lista di partenza "
                                         "(utile per scaricare tante pagine specifiche, es. schede prodotto)")
+    ap.add_argument("--pdf-urls-file", help="file di testo con un URL di PDF per riga da scaricare direttamente "
+                                            "(a differenza di --urls-file, ogni riga e' trattata come un file da "
+                                            "scaricare via save_pdf(), non come una pagina da aprire col browser: "
+                                            "necessario per includere PDF specifici in un crawl vincolato a "
+                                            "--urls-file --no-follow, dove non sarebbero mai scoperti seguendo i link)")
     ap.add_argument("--no-follow", action="store_true",
                     help="NON inseguire i link trovati: scarica solo gli URL indicati (con urls/--urls-file)")
     ap.add_argument("--no-pdf", action="store_true",
@@ -892,14 +916,19 @@ def main():
     if args.urls_file:
         with open(args.urls_file, encoding="utf-8") as f:
             urls.extend(ln.strip() for ln in f if ln.strip() and not ln.startswith("#"))
-    if not urls:
-        ap.error("nessun URL fornito: indicane almeno uno come argomento o con --urls-file")
+    pdf_urls = []
+    if args.pdf_urls_file:
+        with open(args.pdf_urls_file, encoding="utf-8") as f:
+            pdf_urls.extend(ln.strip() for ln in f if ln.strip() and not ln.startswith("#"))
+    if not urls and not pdf_urls:
+        ap.error("nessun URL fornito: indicane almeno uno come argomento, con --urls-file o con --pdf-urls-file")
 
     HEADLESS = not args.headful
     if args.headful:
         print(">> Modalita' HEADFUL: si aprira' una finestra browser. Non chiuderla durante il lavoro.")
     run(urls, args.out, args.max, args.delay, args.include_subdomains,
-        follow_links=not args.no_follow, grab_pdf=not args.no_pdf, dump_html=args.dump_html)
+        follow_links=not args.no_follow, grab_pdf=not args.no_pdf, dump_html=args.dump_html,
+        extra_pdf_urls=pdf_urls)
 
 
 if __name__ == "__main__":
