@@ -2,7 +2,7 @@
 
 Strumento Python che scarica un sito ed estrae i testi (pagine + PDF) per l'analisi del contenuto (conteggio parole). Usa Chromium headless via Playwright, quindi **esegue il JavaScript** e funziona anche sui siti moderni (React, Salesforce, site-builder) dove wget/curl/Cyotek WebCopy restituiscono pagine vuote.
 
-È lo stesso strumento già usato su Windows via PowerShell (es. per arcafondi.it), qui impacchettato per essere installato ed eseguito su una VM Linux.
+È lo stesso strumento già usato su Windows via PowerShell, qui impacchettato per essere installato ed eseguito su una VM Linux.
 
 ---
 
