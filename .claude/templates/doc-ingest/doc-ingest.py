@@ -3,7 +3,7 @@
 """
 doc-ingest.py - Ingestione deterministica e incrementale di un corpus documentale
 (.pdf, .docx, .pptx, .xlsx, .html) in una cache Markdown locale, a zero consumo di
-token: l'estrazione e' interamente locale, nessuna chiamata LLM.
+token: l'estrazione è interamente locale, nessuna chiamata LLM.
 
 Cammina ricorsivamente una cartella sorgente, converte ogni documento supportato in
 Markdown e scrive il risultato in una cache che rispecchia la struttura di cartelle
@@ -11,12 +11,12 @@ della sorgente. Un manifest a content-hash (sha256) evita di riconvertire i file
 invariati tra una corsa e l'altra. Al termine rigenera _INDEX.md: lo scheletro di
 Livello 1 della disclosure progressiva descritta in ../../rules/token-economy.md,
 con titolo, albero delle intestazioni, conteggi (parole, tabelle, immagini) e stato
-di ciascun documento, cosi che un agente possa decidere cosa leggere per intero senza
+di ciascun documento, così che un agente possa decidere cosa leggere per intero senza
 aprire l'intero corpus.
 
 Motore di default: markitdown (MIT). Con --engine docling si usa Docling sui soli
 .pdf per i layout complessi (tabelle, multi-colonna) dove markitdown degrada; e una
-dipendenza opzionale, importata solo se il flag e' passato. Con --ocr si tenta il
+dipendenza opzionale, importata solo se il flag è passato. Con --ocr si tenta il
 fallback OCR via pytesseract sui PDF scansionati senza testo estraibile; richiede il
 binario di sistema tesseract-ocr, anch'esso opzionale.
 
@@ -31,6 +31,7 @@ richiesti solo dai rispettivi flag.
 """
 
 import argparse
+import importlib.util
 import hashlib
 import json
 import os
@@ -41,7 +42,20 @@ from pathlib import Path
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm"}
 MANIFEST_NAME = ".manifest.json"
 INDEX_NAME = "_INDEX.md"
-OCR_MIN_CHARS = 200  # sotto questa soglia di testo estratto, un .pdf e' sospetto scan
+OCR_MIN_CHARS = 200  # sotto questa soglia di testo estratto, un .pdf è sospetto scan
+_STORAGE = None
+
+
+def storage_tool():
+    global _STORAGE
+    if _STORAGE is None:
+        path = Path(__file__).with_name('cache-storage.py')
+        if not path.is_file():
+            raise RuntimeError('Istanziare anche cache-storage.py dal pacchetto doc-ingest.')
+        spec = importlib.util.spec_from_file_location('doc_ingest_cache_storage', path)
+        _STORAGE = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_STORAGE)
+    return _STORAGE
 
 
 # --- hashing e manifest ------------------------------------------------------
@@ -93,7 +107,7 @@ def convert_with_ocr(path):
     except ImportError:
         raise RuntimeError(
             "Il flag --ocr richiede 'pytesseract' e 'pdf2image' "
-            "(pip install pytesseract pdf2image) piu' il binario di sistema "
+            "(pip install pytesseract pdf2image) più il binario di sistema "
             "tesseract-ocr, non trovati nell'ambiente corrente."
         )
     pages = convert_from_path(str(path))
@@ -101,7 +115,7 @@ def convert_with_ocr(path):
 
 
 def convert_file(path, engine, ocr):
-    """Ritorna (markdown, nota). nota e' None o un avviso non bloccante."""
+    """Ritorna (markdown, nota). nota è None o un avviso non bloccante."""
     ext = path.suffix.lower()
     if engine == "docling" and ext == ".pdf":
         text = convert_with_docling(path)
@@ -164,7 +178,22 @@ def render_index(entries):
 
 
 # --- orchestrazione -------------------------------------------------------------
-def iter_source_files(source_dir, cache_dir):
+def carica_esclusi(percorso):
+    """Schemi dei documenti personali da non aprire mai (regola documenti-personali.md).
+
+    Un'espressione regolare per riga, confrontata senza maiuscole con il percorso completo
+    del file; righe vuote e righe che iniziano con # si ignorano. Se il file indicato non
+    esiste lo strumento si ferma, perché un'ingestione di massa senza esclusione è proprio
+    il caso che la regola esiste per impedire.
+    """
+    p = Path(percorso)
+    if not p.exists():
+        sys.exit(f"doc-ingest: manca {p}, il file degli schemi dei documenti personali")
+    righe = (r.strip() for r in p.read_text(encoding="utf-8").splitlines())
+    return [re.compile(r, re.IGNORECASE) for r in righe if r and not r.startswith("#")]
+
+
+def iter_source_files(source_dir, cache_dir, esclusi=None):
     cache_resolved = cache_dir.resolve()
     for root, dirs, files in os.walk(source_dir):
         root_path = Path(root)
@@ -175,12 +204,20 @@ def iter_source_files(source_dir, cache_dir):
         for name in files:
             path = root_path / name
             if path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                # Lo schema si confronta con il percorso completo, perché gli schemi delle
+                # cartelle cercano un separatore prima del nome, che il percorso relativo
+                # di un file in una sottocartella di primo livello non ha.
+                if esclusi and any(s.search(str(path.resolve())) for s in esclusi):
+                    print(f"[personale escluso] {path.relative_to(source_dir)}", file=sys.stderr)
+                    continue
                 yield path
 
 
-def run(source_dir, cache_dir, engine, ocr, force):
+def run(source_dir, cache_dir, engine, ocr, force, esclusi=None, compression='plain'):
     source_dir = Path(source_dir)
     cache_dir = Path(cache_dir)
+    if source_dir.resolve() == cache_dir.resolve():
+        raise ValueError('La cache deve essere distinta dalla sorgente.')
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = {} if force else load_manifest(cache_dir)
@@ -188,14 +225,15 @@ def run(source_dir, cache_dir, engine, ocr, force):
     entries = []
     counts = {"nuovo": 0, "aggiornato": 0, "invariato": 0, "errore": 0}
 
-    for path in iter_source_files(source_dir, cache_dir):
+    for path in iter_source_files(source_dir, cache_dir, esclusi):
         source_rel = str(path.relative_to(source_dir))
         digest = sha256_of(path)
         cache_rel = source_rel + ".md"
-        cache_path = cache_dir / cache_rel
+        cache_base = cache_dir / cache_rel
+        cache_path = storage_tool().cache_variant(cache_base)
 
         previous = manifest.get(source_rel)
-        if previous == digest and cache_path.exists():
+        if previous == digest and cache_path is not None:
             status = "invariato"
         else:
             status = "aggiornato" if previous else "nuovo"
@@ -203,17 +241,21 @@ def run(source_dir, cache_dir, engine, ocr, force):
         new_manifest[source_rel] = digest
 
         if status == "invariato":
-            text = cache_path.read_text(encoding="utf-8")
+            with storage_tool().open_text(cache_path) as stream:
+                text = stream.read()
             note = None
         else:
             try:
                 text, note = convert_file(path, engine, ocr)
-            except Exception as exc:  # qualunque libreria di conversione puo' fallire
+            except Exception as exc:  # qualunque libreria di conversione può fallire
                 print(f"[errore] {source_rel}: {exc}", file=sys.stderr)
                 counts["errore"] += 1
                 continue
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(text, encoding="utf-8")
+
+        # Re-encode an unchanged mirror without re-running extraction; publish before retiring
+        # legacy encodings. Every stored text is decoded and compared before the old one goes.
+        cache_path = storage_tool().write_cached_text(cache_base, text, compression)
+        cache_rel = str(cache_path.relative_to(cache_dir))
 
         counts[status] += 1
         analysis = analyze_markdown(text)
@@ -239,9 +281,68 @@ def run(source_dir, cache_dir, engine, ocr, force):
     return counts["errore"] == 0
 
 
+def autotest():
+    """Prova dell'esclusione dei documenti personali con l'elenco di esempio, dal 2026-10-07.
+
+    Costruisce un albero temporaneo con nomi di file nelle forme in cui si salvano davvero,
+    cioè con trattini bassi, spazi, maiuscole e cartelle annidate, e controlla che
+    `iter_source_files` salti tutti e soli i personali. La prova è nata da due difetti
+    trovati quel giorno nell'elenco: `\\bIBAN\\b` non trovava `coordinate_IBAN.pdf`, perché
+    per le espressioni regolari il trattino basso è parte della parola, e conto corrente,
+    carte e mutui non erano coperti. Controlla anche che senza elenco i file ci siano tutti,
+    perché una prova in cui nessun file viene trovato passerebbe senza misurare nulla.
+    """
+    import contextlib
+    import io
+    import tempfile
+    elenco = Path(__file__).with_name("esclusi-personali.esempio.txt")
+    personali = [
+        "Download/estratto_conto_2025-03.pdf", "Download/Estratto Conto Marzo.pdf",
+        "Download/coordinate_IBAN.pdf", "Download/modello_F24_2025.pdf", "Download/ISEE-2026.pdf",
+        "Download/contabile_bonifico.pdf", "Download/carta_di_credito_rendiconto.pdf",
+        "Download/movimenti_conto_corrente.xlsx", "Download/mutuo_piano.pdf",
+        "Download/busta_paga_2025.pdf", "Download/carta_identita.pdf", "Download/codice_fiscale.pdf",
+        "Banca/2025/qualunque.pdf", "Varie/Fatture/marzo.pdf", "Varie/conferma_ordine_12345.pdf",
+    ]
+    studio = [
+        "Studio/libro_algebra.pdf", "Studio/slides_reti.pptx", "Studio/conto_alla_rovescia.pdf",
+        "Studio/ordinamento_algoritmi.pdf", "Studio/carta_geografica.pdf", "Studio/Ibanez_chitarra.pdf",
+    ]
+    errori = 0
+    with tempfile.TemporaryDirectory() as d:
+        radice = Path(d) / "sorgente"
+        for rel in personali + studio:
+            f = radice / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(b"prova")
+        cache = Path(d) / "cache"
+        esclusi = carica_esclusi(elenco)
+        with contextlib.redirect_stderr(io.StringIO()):
+            visti = {str(p.relative_to(radice)).replace(os.sep, "/") for p in iter_source_files(radice, cache, esclusi)}
+            tutti = {str(p.relative_to(radice)).replace(os.sep, "/") for p in iter_source_files(radice, cache, None)}
+        if tutti != set(personali + studio):
+            errori += 1
+            print("senza elenco mancano file: %s" % sorted(set(personali + studio) - tutti))
+        for rel in personali:
+            if rel in visti:
+                errori += 1
+                print("personale NON escluso: %s" % rel)
+        for rel in studio:
+            if rel not in visti:
+                errori += 1
+                print("materiale di studio escluso per errore: %s" % rel)
+    print("autotest: %d file, %d errori" % (len(personali) + len(studio), errori))
+    return 1 if errori else 0
+
+
 def main():
+    if "--autotest" in sys.argv[1:]:
+        sys.exit(autotest())
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[2])
-    parser.add_argument("source", help="Cartella sorgente da scansionare ricorsivamente")
+    parser.add_argument("source", nargs='?', help="Cartella sorgente da scansionare ricorsivamente")
+    parser.add_argument('--compression', choices=['plain', 'auto', 'gzip', 'bzip2', 'xz'], default='plain',
+                        help='Storage dei mirror: auto sceglie il minore verificato; plain conserva il formato storico')
+    parser.add_argument('--read-cache', type=Path, help='Legge un mirror anche compresso, senza estrarlo su disco')
     parser.add_argument(
         "--out",
         default="_notes/.tmp-doc-cache",
@@ -263,8 +364,21 @@ def main():
         action="store_true",
         help="Ignora il manifest e riconverte tutti i file",
     )
+    parser.add_argument(
+        "--esclusi",
+        help="File degli schemi dei documenti personali da non aprire, una regex per riga "
+             "(regola documenti-personali.md; esempio in esclusi-personali.esempio.txt)",
+    )
     args = parser.parse_args()
-    ok = run(args.source, args.out, args.engine, args.ocr, args.force)
+    if args.read_cache:
+        with storage_tool().open_text(args.read_cache) as stream:
+            for line in stream:
+                print(line, end='')
+        return
+    if not args.source:
+        parser.error('Indicare source oppure --read-cache')
+    esclusi = carica_esclusi(args.esclusi) if args.esclusi else None
+    ok = run(args.source, args.out, args.engine, args.ocr, args.force, esclusi, args.compression)
     sys.exit(0 if ok else 1)
 
 

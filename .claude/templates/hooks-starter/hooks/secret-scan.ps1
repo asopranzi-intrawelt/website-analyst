@@ -4,6 +4,15 @@
 # negato (i commit restano manuali dell'utente), quindi questo hook e' difesa in profondita'
 # per i progetti che allentano quel deny. I commit manuali dell'utente NON passano di qui: per
 # coprirli serve un hook nativo di git (core.hooksPath), vedi README del pacchetto.
+#
+# Perimetro, e cosa NON copre. Questo hook guarda il solo diff in stage, che e' la scelta
+# giusta per il suo compito: un segreto lo si introduce, e va fermato quando lo si
+# introduce. Ne discende pero' che un residuo GIA' PRESENTE nel repository gli e'
+# invisibile per costruzione, perche' nessun commit successivo lo riporta in stage. Per
+# quella meta' del problema serve un controllo che passi il perimetro intero a ogni
+# esecuzione: e' il pacchetto `anonymization`, che cerca anche una categoria diversa,
+# cioe' i dati che identificano persone e infrastrutture invece delle credenziali. I due
+# si usano insieme e nessuno dei due sostituisce l'altro.
 # Blocco = exit 2 con motivo su stderr. NON attivo finche' non registrato nel settings.json.
 
 $ErrorActionPreference = "SilentlyContinue"
@@ -13,7 +22,12 @@ $raw = [Console]::In.ReadToEnd()
 # Interviene solo se il payload contiene un git commit; altrimenti lascia passare subito.
 if ($raw -notmatch 'git\s+commit') { exit 0 }
 
-$staged = (git diff --cached) -join "`n"
+# Solo le righe AGGIUNTE (-U0, righe che iniziano con '+'), non il contesto: un repository che ha
+# gia' committato un valore di prova fermerebbe ogni commit vicino a quella riga. Una riga che
+# porta il marcatore `segreto-scan: ignora` e' un'esenzione dichiarata accanto al valore.
+$staged = ((git diff --cached -U0) | Where-Object {
+    $_ -match '^\+' -and $_ -notmatch '^\+\+\+ ' -and $_ -notmatch 'segreto-scan: ignora'
+}) -join "`n"
 if (-not $staged) { exit 0 }
 
 # Pattern di secret: chiavi AWS, blocchi di chiave privata, token GitHub/OpenAI/Slack,
@@ -31,7 +45,7 @@ $patterns = @(
 
 foreach ($p in $patterns) {
     if ($staged -match $p) {
-        [Console]::Error.WriteLine("Possibile secret rilevato nel diff in stage (hook secret-scan). Rimuoverlo dallo stage prima di committare; se e' un falso positivo, adattare i pattern in .claude/hooks/secret-scan.ps1.")
+        [Console]::Error.WriteLine("Possibile secret rilevato nel diff in stage (hook secret-scan). Rimuoverlo dallo stage prima di committare; se e' un falso positivo, aggiungere sulla stessa riga il commento 'segreto-scan: ignora'.")
         exit 2
     }
 }
